@@ -1,0 +1,64 @@
+name: Train Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      n_trials:
+        description: 'Number of Optuna trials'
+        required: false
+        default: '50'
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    
+    env:
+      MLFLOW_DIR: ${{ github.workspace }}/mlruns
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Download dataset
+      env:
+        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      run: |
+        mkdir -p ~/.kaggle
+        echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
+        chmod 600 ~/.kaggle/kaggle.json
+        kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
+    
+    - name: Preprocess data
+      run: |
+        python -c "from src.data.preprocessing import DataPreprocessor; DataPreprocessor().preprocess_pipeline()"
+    
+    - name: Train model
+      env:
+        MLFLOW_TRACKING_URI: ${{ env.MLFLOW_DIR }}
+      run: |
+        python src/models/train.py
+    
+    - name: Upload model artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: trained-model
+        path: |
+          models/
+          mlruns/
+    
+    - name: Cleanup MLFlow directory
+      if: always()
+      run: |
+        rm -rf ${{ env.MLFLOW_DIR }}
