@@ -5,9 +5,7 @@ FastAPI application for serving fraud detection model.
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from typing import Dict
 import time
-import os
 
 from src.models.inference import FraudDetector
 from src.monitoring.metrics import metrics_collector
@@ -17,7 +15,7 @@ from src.monitoring.metrics import metrics_collector
 app = FastAPI(
     title="Credit Card Fraud Detection API",
     description="API for detecting fraudulent credit card transactions",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # Initialize model
@@ -38,7 +36,11 @@ async def startup_event():
 
 class TransactionFeatures(BaseModel):
     """Input schema for transaction features."""
-    Time: float = Field(..., description="Seconds elapsed between this transaction and first transaction")
+
+    Time: float = Field(
+        ...,
+        description="Seconds elapsed between this transaction and first transaction",
+    )
     V1: float = Field(..., description="PCA component 1")
     V2: float = Field(..., description="PCA component 2")
     V3: float = Field(..., description="PCA component 3")
@@ -68,7 +70,7 @@ class TransactionFeatures(BaseModel):
     V27: float = Field(..., description="PCA component 27")
     V28: float = Field(..., description="PCA component 28")
     Amount: float = Field(..., description="Transaction amount", ge=0)
-    
+
     class Config:
         schema_extra = {
             "example": {
@@ -101,13 +103,14 @@ class TransactionFeatures(BaseModel):
                 "V26": -0.189114843888824,
                 "V27": 0.133558376740387,
                 "V28": -0.0210530534538215,
-                "Amount": 149.62
+                "Amount": 149.62,
             }
         }
 
 
 class PredictionResponse(BaseModel):
     """Output schema for prediction response."""
+
     prediction: int = Field(..., description="Prediction (0=legitimate, 1=fraud)")
     label: str = Field(..., description="Human-readable label")
     fraud_probability: float = Field(..., description="Probability of fraud (0-1)")
@@ -124,8 +127,8 @@ async def root():
         "endpoints": {
             "predict": "/predict",
             "health": "/health",
-            "metrics": "/metrics"
-        }
+            "metrics": "/metrics",
+        },
     }
 
 
@@ -134,11 +137,11 @@ async def health_check():
     """Health check endpoint."""
     if detector is None or detector.model is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    
+
     return {
         "status": "healthy",
         "model_loaded": True,
-        "threshold": float(detector.threshold)
+        "threshold": float(detector.threshold),
     }
 
 
@@ -146,40 +149,40 @@ async def health_check():
 async def predict(transaction: TransactionFeatures):
     """
     Predict if a transaction is fraudulent.
-    
+
     Args:
         transaction: Transaction features
-        
+
     Returns:
         Prediction result with probability and label
     """
     if detector is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
-    
+
     try:
         # Measure latency
         start_time = time.time()
-        
+
         # Make prediction
         features = transaction.dict()
         result = detector.predict(features)
-        
+
         # Calculate latency
         latency = time.time() - start_time
         latency_ms = latency * 1000
-        
+
         # Record metrics
         metrics_collector.record_prediction(
-            prediction=result['prediction'],
-            probability=result['fraud_probability'],
-            latency=latency
+            prediction=result["prediction"],
+            probability=result["fraud_probability"],
+            latency=latency,
         )
-        
+
         # Add latency to response
-        result['latency_ms'] = latency_ms
-        
+        result["latency_ms"] = latency_ms
+
         return result
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
@@ -188,7 +191,7 @@ async def predict(transaction: TransactionFeatures):
 async def get_metrics():
     """
     Prometheus metrics endpoint.
-    
+
     Returns:
         Metrics in Prometheus exposition format
     """
@@ -198,4 +201,5 @@ async def get_metrics():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
