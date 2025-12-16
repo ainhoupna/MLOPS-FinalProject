@@ -99,24 +99,29 @@ jobs:
     needs: deploy  # Wait for Render deployment to complete
     
     steps:
-      - name: Checkout repository with all branches
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed to access other branches (hf-space)
-          ref: main  # Default to main
+          fetch-depth: 0
+          lfs: false
       
-      - name: Stash local changes to avoid conflicts
-        run: git stash --include-untracked || true
-      
-      - name: Switch to hf-space branch
-        run: |
-          git fetch origin hf-space:hf-space || git checkout -b hf-space
-          git checkout hf-space
-      
-      - name: Push to HuggingFace Space
+      - name: Push to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
         run: |
-          git remote add hf https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/Credit_Fraud_Detection || true
-          git push hf hf-space:main --force
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          
+          # Create orphan branch to avoid history with binaries
+          git checkout --orphan hf-clean
+          
+          # Remove binary files from index and working tree
+          git rm -rf --ignore-unmatch Final_Project.pdf artifacts/ reports/figures/
+          
+          # Commit
+          git commit -m "Deploy to Hugging Face Spaces"
+          
+          # Push
+          git remote add hf https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/Credit_Fraud_Detection
+          git push hf hf-clean:main --force
