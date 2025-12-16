@@ -1,3 +1,14 @@
+---
+title: Credit Fraud Detection
+emoji: 💳
+colorFrom: red
+colorTo: blue
+sdk: gradio
+sdk_version: "3.50.2"
+app_file: app/app.py
+pinned: false
+---
+
 # 💳 Credit Card Fraud Detection - MLOps Project
 
 A fully automated MLOps pipeline for detecting fraudulent credit card transactions using XGBoost, with comprehensive experiment tracking, monitoring, and deployment.

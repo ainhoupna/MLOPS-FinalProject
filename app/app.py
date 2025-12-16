@@ -7,7 +7,7 @@ import requests
 import os
 
 # API endpoint (can be configured)
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = os.getenv("API_URL", "https://mlops-final-project-latest.onrender.com")
 
 
 def predict_fraud(
