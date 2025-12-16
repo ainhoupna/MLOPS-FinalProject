@@ -168,6 +168,13 @@ class DataPreprocessor:
             val.to_csv("data/processed/val.csv", index=False)
             test.to_csv("data/processed/test.csv", index=False)
             print("\n✓ Processed data saved to data/processed/")
+            
+            # Save scaler
+            import pickle
+            os.makedirs("models", exist_ok=True)
+            with open("models/scaler.pkl", "wb") as f:
+                pickle.dump(self.scaler, f)
+            print("✓ Scaler saved to models/scaler.pkl")
         
         return train, val, test
 

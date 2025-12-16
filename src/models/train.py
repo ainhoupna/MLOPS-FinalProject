@@ -354,7 +354,7 @@ def main():
     X_test, y_test = get_X_y(test_df)
     
     # Train model
-    trainer = FraudDetectionTrainer(n_trials=50)
+    trainer = FraudDetectionTrainer(n_trials=5)
     best_model, best_params, optimal_threshold = trainer.train(X_train, y_train, X_val, y_val)
     
     # Evaluate on test set
@@ -377,8 +377,7 @@ def main():
     with open("models/optimal_threshold.pkl", "wb") as f:
         pickle.dump(optimal_threshold, f)
     
-    with open("models/scaler.pkl", "wb") as f:
-        pickle.dump(preprocessor.scaler, f)
+
     
     print("\n✓ Model saved to models/fraud_detector.json")
 
