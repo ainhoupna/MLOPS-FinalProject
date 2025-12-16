@@ -255,7 +255,7 @@ pytest tests/test_api.py -v
 
 ### Deploy Workflow
 - **Trigger**: Push to main
-- **Steps**: Build Docker image → Push to GitHub Container Registry
+- **Steps**: Build Docker image → Push to Docker Hub
 
 ## 🎨 Hugging Face Space
 

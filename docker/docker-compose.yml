@@ -5,6 +5,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: ${DOCKER_USERNAME}/mlops_final_project:latest
     container_name: fraud-detection-api
     ports:
       - "8000:8000"
