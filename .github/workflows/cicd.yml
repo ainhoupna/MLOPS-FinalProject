@@ -1,0 +1,122 @@
+name: CICD
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+jobs:
+  # Job 1: Build and Test
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install packages
+        run: make install
+      
+      - name: Format
+        run: make format
+      
+      - name: Lint
+        run: make lint
+      
+      - name: Test
+        run: make test
+  
+  # Job 2: Build and Push Docker Image
+  deploy:
+    name: Build and Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: build  # Only run if build passes
+    env:
+      DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/mlops_final_project:latest
+    
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up QEMU (for buildx)
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ env.DOCKER_IMAGE }}
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/mlops_final_project:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/mlops_final_project:buildcache,mode=max
+      
+      - name: Trigger Render Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_KEY }}"
+        env:
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+  
+  # Job 3: Deploy to HuggingFace Spaces
+  deploy-hf:
+    name: Deploy to HuggingFace Spaces
+    runs-on: ubuntu-latest
+    needs: deploy  # Wait for Render deployment to complete
+    
+    steps:
+      - name: Checkout repository with all branches
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed to access other branches (hf-space)
+          ref: main  # Default to main
+      
+      - name: Stash local changes to avoid conflicts
+        run: git stash --include-untracked || true
+      
+      - name: Switch to hf-space branch
+        run: |
+          git fetch origin hf-space:hf-space || git checkout -b hf-space
+          git checkout hf-space
+      
+      - name: Push to HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+        run: |
+          git remote add hf https://$HF_USERNAME:$HF_TOKEN@huggingface.co/spaces/$HF_USERNAME/mlops_final_project || true
+          git push hf hf-space:main --force
