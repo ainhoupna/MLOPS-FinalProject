@@ -2,6 +2,8 @@
 TabNet training module with Optuna hyperparameter optimization and MLFlow tracking.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 from pytorch_tabnet.tab_model import TabNetClassifier
