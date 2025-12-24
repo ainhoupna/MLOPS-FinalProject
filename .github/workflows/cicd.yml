@@ -117,7 +117,7 @@ jobs:
           git checkout --orphan hf-clean
           
           # Remove binary files from index and working tree
-          git rm -rf --ignore-unmatch Final_Project.pdf artifacts/ reports/figures/
+          git rm -rf --ignore-unmatch Final_Project.pdf artifacts/ reports/figures/ models/
           
           # Commit
           git commit -m "Deploy to Hugging Face Spaces"
