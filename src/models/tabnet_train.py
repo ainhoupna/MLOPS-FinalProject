@@ -6,7 +6,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from pytorch_tabnet.tab_model import TabNetClassifier
+from pytorch_tabnet.tab_model import TabNetClassifier  # pylint: disable=import-error
 import optuna
 import mlflow
 import mlflow.pytorch
