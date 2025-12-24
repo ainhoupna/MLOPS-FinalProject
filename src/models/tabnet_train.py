@@ -74,7 +74,7 @@ class TabNetTrainer:
             pr_auc_scores.append(pr_auc)
 
         mean_pr_auc = np.mean(pr_auc_scores)
-        
+
         with mlflow.start_run(nested=True):
             mlflow.log_params(params)
             mlflow.log_metric("cv_pr_auc_mean", mean_pr_auc)
@@ -83,7 +83,7 @@ class TabNetTrainer:
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series, X_val: pd.DataFrame, y_val: pd.Series):
         print(f"Starting TabNet optimization with {self.n_trials} trials...")
-        
+
         with mlflow.start_run(run_name="tabnet_optimization"):
             study = optuna.create_study(direction="maximize")
             study.optimize(lambda trial: self.objective(trial, X_train, y_train), n_trials=self.n_trials)
@@ -93,10 +93,10 @@ class TabNetTrainer:
 
             # Reconstruct optimizer_params from best_params
             optimizer_params = {"lr": best_params.pop("lr")}
-            
+
             # Train final model
             model = TabNetClassifier(
-                **best_params, 
+                **best_params,
                 optimizer_params=optimizer_params,
                 seed=self.random_state
             )
@@ -113,7 +113,7 @@ class TabNetTrainer:
 
             # Log model
             mlflow.pytorch.log_model(model.network, "tabnet_model")
-            
+
             return model
 
 
