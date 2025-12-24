@@ -2,24 +2,14 @@
 TabNet training module with Optuna hyperparameter optimization and MLFlow tracking.
 """
 
-import os
 import numpy as np
 import pandas as pd
-import torch
 from pytorch_tabnet.tab_model import TabNetClassifier
 import optuna
 import mlflow
 import mlflow.pytorch
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import (
-    roc_auc_score,
-    average_precision_score,
-    f1_score,
-    precision_score,
-    recall_score,
-)
-from typing import Dict, Tuple
-import pickle
+from sklearn.metrics import average_precision_score
 
 from src.data.preprocessing import DataPreprocessor, get_X_y
 
@@ -50,7 +40,7 @@ class TabNetTrainer:
             "n_steps": trial.suggest_int("n_steps", 3, 10),
             "gamma": trial.suggest_float("gamma", 1.0, 2.0),
             "lambda_sparse": trial.suggest_float("lambda_sparse", 1e-4, 1e-2, log=True),
-            "optimizer_params": dict(lr=trial.suggest_float("lr", 1e-3, 1e-1, log=True)),
+            "optimizer_params": {"lr": trial.suggest_float("lr", 1e-3, 1e-1, log=True)},
             "mask_type": trial.suggest_categorical("mask_type", ["sparsemax", "entmax"]),
             "verbose": 0,
             "seed": self.random_state,
