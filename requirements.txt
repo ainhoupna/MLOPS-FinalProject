@@ -3,6 +3,8 @@ xgboost==2.0.3
 scikit-learn==1.4.0
 pandas==2.2.0
 numpy==1.26.3
+pytorch-tabnet==4.1.0
+torch==2.2.0
 
 # Hyperparameter Optimization
 optuna==3.5.0

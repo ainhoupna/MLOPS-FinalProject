@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 import time
+import random
+import math
 
 from src.models.inference import FraudDetector
 from src.monitoring.metrics import metrics_collector
@@ -190,11 +192,26 @@ async def predict(transaction: TransactionFeatures):
 @app.get("/metrics")
 async def get_metrics():
     """
-    Prometheus metrics endpoint.
+    Prometheus metrics endpoint with simulated drift.
 
     Returns:
         Metrics in Prometheus exposition format
     """
+    # Simulate drift: slowly increasing over time with some noise
+    # Using time to create a trend
+    current_time = time.time()
+    
+    # Data drift: slow oscillation + noise
+    data_drift = 0.1 + 0.05 * math.sin(current_time / 3600) + random.uniform(0, 0.02)
+    
+    # Concept drift: slow upward trend (simulating model degradation)
+    # Starts at 0.05, increases by 0.01 every hour
+    start_time = 1735038000  # Fixed reference point (Dec 24 2024)
+    hours_passed = (current_time - start_time) / 3600
+    concept_drift = min(0.9, 0.05 + (hours_passed * 0.001) + random.uniform(0, 0.05))
+    
+    metrics_collector.record_drift(data_drift, concept_drift)
+    
     metrics_data = metrics_collector.get_metrics()
     return Response(content=metrics_data, media_type="text/plain")
 

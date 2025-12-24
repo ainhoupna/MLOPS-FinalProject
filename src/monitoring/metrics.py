@@ -29,6 +29,15 @@ last_prediction_label = Gauge(
     "last_prediction_label", "Label of the last prediction (0=legitimate, 1=fraud)"
 )
 
+# Drift Gauges (Simulated)
+data_drift_score = Gauge(
+    "data_drift_score", "Simulated data drift score (0-1)"
+)
+
+concept_drift_score = Gauge(
+    "concept_drift_score", "Simulated concept drift score (0-1)"
+)
+
 # Histogram for latency
 prediction_latency = Histogram(
     "prediction_latency_seconds",
@@ -65,6 +74,18 @@ class MetricsCollector:
 
         # Record latency
         prediction_latency.observe(latency)
+
+    @staticmethod
+    def record_drift(data_drift: float, concept_drift: float):
+        """
+        Record simulated drift metrics.
+
+        Args:
+            data_drift: Data drift score
+            concept_drift: Concept drift score
+        """
+        data_drift_score.set(data_drift)
+        concept_drift_score.set(concept_drift)
 
     @staticmethod
     def get_metrics() -> bytes:

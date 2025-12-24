@@ -19,6 +19,7 @@ from sklearn.metrics import (
     recall_score,
     confusion_matrix,
 )
+from sklearn.calibration import CalibratedClassifierCV
 import matplotlib.pyplot as plt
 import seaborn as sns
 import shap
@@ -232,7 +233,7 @@ class FraudDetectionTrainer:
         y_train: pd.Series,
         X_val: pd.DataFrame,
         y_val: pd.Series,
-    ) -> Tuple[xgb.XGBClassifier, Dict, float]:
+    ) -> Tuple[xgb.XGBClassifier, Dict, float, CalibratedClassifierCV]:
         """
         Train the model with Optuna optimization and MLFlow tracking.
 
@@ -273,8 +274,13 @@ class FraudDetectionTrainer:
             best_model = xgb.XGBClassifier(**best_params)
             best_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
-            # Predictions
-            y_val_pred_proba = best_model.predict_proba(X_val)[:, 1]
+            # Calibrate model
+            print("Calibrating model probabilities...")
+            calibrated_model = CalibratedClassifierCV(best_model, cv="prefit", method="sigmoid")
+            calibrated_model.fit(X_val, y_val)
+            
+            # Use calibrated model for predictions
+            y_val_pred_proba = calibrated_model.predict_proba(X_val)[:, 1]
 
             # Find optimal threshold
             optimal_threshold, best_f1 = self.find_optimal_threshold(
@@ -330,7 +336,7 @@ class FraudDetectionTrainer:
 
             print("\n✓ Model training completed and logged to MLFlow")
 
-        return best_model, best_params, optimal_threshold
+        return best_model, best_params, optimal_threshold, calibrated_model
 
 
 def main():
@@ -353,7 +359,7 @@ def main():
 
     # Train model
     trainer = FraudDetectionTrainer(n_trials=5)
-    best_model, best_params, optimal_threshold = trainer.train(
+    best_model, best_params, optimal_threshold, calibrated_model = trainer.train(
         X_train, y_train, X_val, y_val
     )
 
@@ -373,6 +379,11 @@ def main():
 
     # Save model locally
     os.makedirs("models", exist_ok=True)
+    # Save the calibrated model wrapper
+    with open("models/fraud_detector_calibrated.pkl", "wb") as f:
+        pickle.dump(calibrated_model, f)
+    
+    # Also save the base XGBoost model for reference
     best_model.save_model("models/fraud_detector.json")
 
     # Save threshold and scaler
