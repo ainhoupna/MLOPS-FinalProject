@@ -3,11 +3,12 @@ FastAPI application for serving fraud detection model.
 """
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel, Field
 import time
 import random
 import math
+import os
 
 from src.models.inference import FraudDetector
 from src.monitoring.metrics import metrics_collector
@@ -120,18 +121,31 @@ class PredictionResponse(BaseModel):
     latency_ms: float = Field(..., description="Prediction latency in milliseconds")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    """Root endpoint."""
-    return {
-        "message": "Credit Card Fraud Detection API",
-        "version": "1.0.0",
-        "endpoints": {
-            "predict": "/predict",
-            "health": "/health",
-            "metrics": "/metrics",
-        },
-    }
+    """Serve HTML landing page."""
+    html_path = os.path.join(os.path.dirname(__file__), "templates", "index.html")
+    
+    try:
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+    except FileNotFoundError:
+        # Fallback to JSON if HTML not found
+        return {
+            "message": "Credit Card Fraud Detection API",
+            "version": "1.0.0",
+            "endpoints": {
+                "predict": "/predict",
+                "health": "/health",
+                "metrics": "/metrics",
+                "docs": "/docs",
+            },
+            "links": {
+                "gradio": "https://huggingface.co/spaces/ainhoupna/Credit_Fraud_Detection",
+                "github": "https://github.com/ainhoupna/MLOPS-FinalProject",
+            },
+        }
 
 
 @app.get("/health")

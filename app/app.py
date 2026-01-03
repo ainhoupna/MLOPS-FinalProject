@@ -13,34 +13,14 @@ API_URL = os.getenv("API_URL", "https://mlops-final-project-latest.onrender.com"
 def predict_fraud(
     time,
     amount,
-    v1,
-    v2,
-    v3,
-    v4,
-    v5,
-    v6,
-    v7,
-    v8,
-    v9,
-    v10,
-    v11,
-    v12,
-    v13,
-    v14,
-    v15,
-    v16,
-    v17,
-    v18,
-    v19,
-    v20,
+    v1, v2, v3, v4, v5, v6, v7, v8, v9, v10,
+    v11, v12, v13, v14, v15, v16, v17, v18, v19, v20,
+    v21, v22, v23, v24, v25, v26, v27, v28,
 ):
     """
-    Make fraud prediction using the API.
-
-    Note: Using only first 20 V features for simpler UI.
-    Remaining V21-V28 will be set to 0 for demo purposes.
+    Make fraud prediction using the API with all 30 features.
     """
-    # Build feature dictionary
+    # Build feature dictionary with all features
     features = {
         "Time": float(time),
         "Amount": float(amount),
@@ -64,15 +44,14 @@ def predict_fraud(
         "V18": float(v18),
         "V19": float(v19),
         "V20": float(v20),
-        # Set remaining features to 0 for demo
-        "V21": 0.0,
-        "V22": 0.0,
-        "V23": 0.0,
-        "V24": 0.0,
-        "V25": 0.0,
-        "V26": 0.0,
-        "V27": 0.0,
-        "V28": 0.0,
+        "V21": float(v21),
+        "V22": float(v22),
+        "V23": float(v23),
+        "V24": float(v24),
+        "V25": float(v25),
+        "V26": float(v26),
+        "V27": float(v27),
+        "V28": float(v28),
     }
 
     try:
@@ -88,7 +67,8 @@ def predict_fraud(
         threshold = result["threshold"]
 
         # Color-code based on prediction
-        if result["prediction"] == 1:
+        is_fraud = result.get("is_fraud", False)
+        if is_fraud:
             status_color = "🔴"
             status_text = f"{status_color} **FRAUD DETECTED**"
         else:
@@ -113,55 +93,21 @@ def predict_fraud(
         return f"❌ **Error:** {str(e)}"
 
 
-# Example transactions
+# Example transactions with all 30 features
 EXAMPLE_LEGITIMATE = [
-    0,
-    149.62,  # Time, Amount
-    -1.36,
-    -0.07,
-    2.54,
-    1.38,
-    -0.34,
-    0.46,
-    0.24,
-    0.10,
-    0.36,
-    0.09,
-    -0.55,
-    -0.62,
-    -0.99,
-    -0.31,
-    1.47,
-    -0.47,
-    0.21,
-    0.03,
-    0.40,
-    0.25,
+    0,  # Time
+    149.62,  # Amount
+    -1.36, -0.07, 2.54, 1.38, -0.34, 0.46, 0.24, 0.10, 0.36, 0.09,  # V1-V10
+    -0.55, -0.62, -0.99, -0.31, 1.47, -0.47, 0.21, 0.03, 0.40, 0.25,  # V11-V20
+    -0.02, 0.28, -0.11, 0.07, 0.13, -0.19, 0.13, -0.02,  # V21-V28
 ]
 
 EXAMPLE_FRAUD = [
-    406,
-    0.89,  # Time, Amount
-    -2.31,
-    1.95,
-    -1.61,
-    3.99,
-    -0.52,
-    -1.43,
-    -2.54,
-    0.10,
-    0.44,
-    -2.42,
-    -1.03,
-    0.74,
-    -1.25,
-    -2.04,
-    0.41,
-    0.14,
-    0.52,
-    0.03,
-    -0.19,
-    -0.22,
+    406,  # Time
+    0.89,  # Amount
+    -2.31, 1.95, -1.61, 3.99, -0.52, -1.43, -2.54, 0.10, 0.44, -2.42,  # V1-V10
+    -1.03, 0.74, -1.25, -2.04, 0.41, 0.14, 0.52, 0.03, -0.19, -0.22,  # V11-V20
+    0.50, 0.22, 0.13, 0.25, 0.51, 0.25, 0.04, 0.13,  # V21-V28
 ]
 
 
@@ -172,8 +118,7 @@ with gr.Blocks(title="Credit Card Fraud Detection") as demo:
     # 💳 Credit Card Fraud Detection
 
     This application uses a machine learning model to detect fraudulent credit card transactions.
-    **Note:** For simplicity, this demo uses only the first 20 PCA components (V1-V20) and transaction metadata.
-    The remaining components (V21-V28) are set to 0.
+    Enter all 28 PCA components (V1-V28) along with Time and Amount for accurate predictions.
 
     ### How to use:
     1. Enter transaction details below
@@ -191,7 +136,7 @@ with gr.Blocks(title="Credit Card Fraud Detection") as demo:
             )
             amount_input = gr.Number(label="Amount ($)", value=100.0)
 
-            gr.Markdown("### PCA Components (V1-V20)")
+            gr.Markdown("### PCA Components (V1-V28)")
             gr.Markdown("*These are anonymized features from PCA transformation*")
 
             with gr.Row():
@@ -223,6 +168,18 @@ with gr.Blocks(title="Credit Card Fraud Detection") as demo:
                 v18 = gr.Number(label="V18", value=0.0)
                 v19 = gr.Number(label="V19", value=0.0)
                 v20 = gr.Number(label="V20", value=0.0)
+            
+            with gr.Row():
+                v21 = gr.Number(label="V21", value=0.0)
+                v22 = gr.Number(label="V22", value=0.0)
+                v23 = gr.Number(label="V23", value=0.0)
+                v24 = gr.Number(label="V24", value=0.0)
+            
+            with gr.Row():
+                v25 = gr.Number(label="V25", value=0.0)
+                v26 = gr.Number(label="V26", value=0.0)
+                v27 = gr.Number(label="V27", value=0.0)
+                v28 = gr.Number(label="V28", value=0.0)
 
             predict_btn = gr.Button("🔍 Detect Fraud", variant="primary")
 
@@ -234,28 +191,10 @@ with gr.Blocks(title="Credit Card Fraud Detection") as demo:
             gr.Examples(
                 examples=[EXAMPLE_LEGITIMATE, EXAMPLE_FRAUD],
                 inputs=[
-                    time_input,
-                    amount_input,
-                    v1,
-                    v2,
-                    v3,
-                    v4,
-                    v5,
-                    v6,
-                    v7,
-                    v8,
-                    v9,
-                    v10,
-                    v11,
-                    v12,
-                    v13,
-                    v14,
-                    v15,
-                    v16,
-                    v17,
-                    v18,
-                    v19,
-                    v20,
+                    time_input, amount_input,
+                    v1, v2, v3, v4, v5, v6, v7, v8, v9, v10,
+                    v11, v12, v13, v14, v15, v16, v17, v18, v19, v20,
+                    v21, v22, v23, v24, v25, v26, v27, v28,
                 ],
                 label="Example Transactions",
             )
@@ -264,28 +203,10 @@ with gr.Blocks(title="Credit Card Fraud Detection") as demo:
     predict_btn.click(
         fn=predict_fraud,
         inputs=[
-            time_input,
-            amount_input,
-            v1,
-            v2,
-            v3,
-            v4,
-            v5,
-            v6,
-            v7,
-            v8,
-            v9,
-            v10,
-            v11,
-            v12,
-            v13,
-            v14,
-            v15,
-            v16,
-            v17,
-            v18,
-            v19,
-            v20,
+            time_input, amount_input,
+            v1, v2, v3, v4, v5, v6, v7, v8, v9, v10,
+            v11, v12, v13, v14, v15, v16, v17, v18, v19, v20,
+            v21, v22, v23, v24, v25, v26, v27, v28,
         ],
         outputs=output,
     )

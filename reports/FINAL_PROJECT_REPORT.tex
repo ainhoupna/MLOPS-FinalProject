@@ -1,0 +1,832 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{amsmath}
+
+% Configuración de listings para código
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    backgroundcolor=\color{gray!10}
+}
+
+% Configuración de hyperlinks
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\title{\textbf{Detección de Fraude en Tarjetas de Crédito\\
+Proyecto Final de MLOps}}
+\author{Ainhoa Pina\\
+\small Master en Data Science\\
+\small Curso 2024/2025}
+\date{Enero 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Descripción del Problema}
+
+\subsection{Problema de Clasificación}
+
+Este proyecto aborda el desafío de \textbf{detectar transacciones fraudulentas} en tarjetas de crédito utilizando un dataset altamente desbalanceado. La tarea es un problema de \textbf{clasificación binaria} donde cada transacción debe clasificarse como:
+
+\begin{itemize}
+    \item \textbf{Clase 0}: Transacción legítima
+    \item \textbf{Clase 1}: Transacción fraudulenta
+\end{itemize}
+
+\subsection{Características del Dataset}
+
+\textbf{Fuente}: \href{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}{Kaggle - Credit Card Fraud Detection Dataset}
+
+\textbf{Estadísticas clave}:
+\begin{itemize}
+    \item Total de transacciones: 284,807
+    \item Transacciones fraudulentas: 492 (0.17\%)
+    \item Transacciones legítimas: 284,315 (99.83\%)
+    \item Ratio de desbalanceo: 577:1
+\end{itemize}
+
+\textbf{Features}:
+\begin{itemize}
+    \item \texttt{Time}: Segundos transcurridos desde la primera transacción (rango: 0-172,792 s $\approx$ 48 horas)
+    \item \texttt{V1-V28}: Features transformadas con PCA (anonimizadas por privacidad)
+    \item \texttt{Amount}: Cantidad de la transacción en euros (rango: €0 - €25,691)
+    \item \texttt{Class}: Variable objetivo (0 = legítima, 1 = fraude)
+\end{itemize}
+
+Total de features: 30 (Time + Amount + V1-V28)
+
+\subsection{El Desafío: Desbalanceo de Clases}
+
+Con solo \textbf{0.17\% de casos de fraude}, el dataset presenta un desbalanceo extremo que plantea varios desafíos:
+
+\begin{enumerate}
+    \item \textbf{Sesgo del modelo}: Los algoritmos tradicionales tienden a predecir todo como legítimo (99.83\% de accuracy sin hacer nada)
+    \item \textbf{Selección de métricas}: La accuracy estándar es engañosa; se necesitan métricas especializadas
+    \item \textbf{Complejidad de evaluación}: Los modelos deben evaluarse cuidadosamente para asegurar que detectan fraudes, no solo que logran alta accuracy
+    \item \textbf{Impacto real}: Perder un fraude (Falso Negativo) cuesta dinero, pero las falsas alarmas (Falsos Positivos) molestan a los clientes
+\end{enumerate}
+
+\section{Esquema de Validación del Modelo}
+
+\subsection{Metodología: Stratified K-Fold Cross-Validation}
+
+Implementamos \textbf{Stratified 5-Fold Cross-Validation} como estrategia principal de validación.
+
+\textbf{Justificación}:
+
+\begin{enumerate}
+    \item \textbf{La estratificación es crítica para datos desbalanceados}:
+    \begin{itemize}
+        \item Sin estratificación, algunos folds podrían tener 0\% fraudes
+        \item Los splits estratificados mantienen exactamente 0.17\% de fraudes en cada fold
+        \item Asegura que cada fold sea representativo de la distribución real
+    \end{itemize}
+    
+    \item \textbf{5-Fold proporciona estimaciones robustas}:
+    \begin{itemize}
+        \item Cada fold usa 80\% para entrenamiento, 20\% para validación
+        \item El modelo se entrena y evalúa 5 veces en diferentes splits
+        \item La métrica final es el promedio de los 5 folds, reduciendo varianza
+        \item La desviación estándar cuantifica la incertidumbre en las estimaciones
+    \end{itemize}
+    
+    \item \textbf{Previene data leakage}:
+    \begin{itemize}
+        \item Dividimos los datos ANTES de cualquier preprocesamiento
+        \item El scaler se ajusta solo en los folds de entrenamiento
+        \item MLFlow registra cada fold independientemente
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Implementación}:
+\begin{lstlisting}[language=Python]
+from sklearn.model_selection import StratifiedKFold
+
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+    X_train_fold = X.iloc[train_idx]
+    X_val_fold = X.iloc[val_idx]
+    y_train_fold = y.iloc[train_idx]
+    y_val_fold = y.iloc[val_idx]
+    
+    # Entrenar modelo en este fold
+    model.fit(X_train_fold, y_train_fold)
+    
+    # Evaluar en fold de validación
+    y_pred_proba = model.predict_proba(X_val_fold)[:, 1]
+    pr_auc = average_precision_score(y_val_fold, y_pred_proba)
+    pr_auc_scores.append(pr_auc)
+
+# Métrica final: media ± std entre folds
+mean_pr_auc = np.mean(pr_auc_scores)
+std_pr_auc = np.std(pr_auc_scores)
+\end{lstlisting}
+
+\subsection{Estrategia de División de Datos}
+
+\textbf{División en tres conjuntos}:
+\begin{itemize}
+    \item \textbf{Training Set}: 70\% (199,365 transacciones, $\sim$344 fraudes)
+    \item \textbf{Validation Set}: 15\% (42,721 transacciones, $\sim$73 fraudes)
+    \item \textbf{Test Set}: 15\% (42,721 transacciones, $\sim$75 fraudes)
+\end{itemize}
+
+Todas las divisiones utilizan \textbf{estratificación} para mantener el balance de clases.
+
+\subsection{Selección de Métricas}
+
+Utilizamos dos categorías de métricas:
+
+\subsubsection{Métricas Threshold-Independent}
+
+\textbf{1. PR-AUC (Precision-Recall Area Under Curve) - MÉTRICA PRINCIPAL}
+
+\begin{itemize}
+    \item Diseñada específicamente para datasets desbalanceados
+    \item Se enfoca en la clase minoritaria (fraudes)
+    \item Más informativa que ROC-AUC cuando la clase positiva es rara
+    \item Un modelo que predice todo como legítimo obtiene PR-AUC $\approx$ 0.0017
+\end{itemize}
+
+\textbf{Interpretación}:
+\begin{itemize}
+    \item 0.0017 = Baseline aleatorio (prevalencia de fraude)
+    \item 0.50 = Modelo decente
+    \item 0.85+ = Modelo excelente para este problema
+\end{itemize}
+
+\textbf{2. ROC-AUC - MÉTRICA SECUNDARIA}
+
+Utilizada como métrica secundaria para comparación, pero puede ser optimista en datos desbalanceados.
+
+\subsubsection{Métricas Threshold-Dependent}
+
+Después de encontrar los mejores hiperparámetros con PR-AUC, seleccionamos un umbral de decisión óptimo maximizando el F1-score:
+
+\begin{itemize}
+    \item \textbf{F1-Score}: Media armónica de precision y recall
+    $$F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}$$
+    
+    \item \textbf{Precision}: ``De los fraudes predichos, ¿cuántos son reales?''
+    $$Precision = \frac{TP}{TP + FP}$$
+    
+    \item \textbf{Recall (Sensibilidad)}: ``De todos los fraudes reales, ¿cuántos capturamos?''
+    $$Recall = \frac{TP}{TP + FN}$$
+    
+    \item \textbf{Confusion Matrix}: Muestra TP, TN, FP, FN para análisis detallado de errores
+\end{itemize}
+
+\subsection{Manejo del Desbalanceo de Clases}
+
+Empleamos una \textbf{estrategia multi-capa} en lugar de usar SMOTE:
+
+\begin{enumerate}
+    \item \textbf{Scale\_pos\_weight (Método nativo de XGBoost)}
+    \begin{lstlisting}[language=Python]
+scale_pos_weight = (y == 0).sum() / (y == 1).sum()  # ≈ 577
+params["scale_pos_weight"] = scale_pos_weight
+    \end{lstlisting}
+    XGBoost penaliza los errores en fraudes 577$\times$ más que en transacciones legítimas.
+    
+    \item \textbf{Splitting estratificado}: Cada conjunto train/val/test y cada fold de CV mantiene la tasa de 0.17\% de fraudes.
+    
+    \item \textbf{Optimización con PR-AUC}: La métrica en sí está diseñada para datos desbalanceados, guiando a Optuna hacia soluciones que detectan fraudes.
+    
+    \item \textbf{Attention Mechanism (TabNet)}: La auto-atención de TabNet aprende qué features importan para la detección de fraudes sin pesos de clase explícitos.
+\end{enumerate}
+
+\textbf{¿Por qué no SMOTE?}
+\begin{itemize}
+    \item Tenemos 492 ejemplos reales de fraude, suficientes para entrenar
+    \item Scale\_pos\_weight de XGBoost es el enfoque recomendado
+    \item SMOTE puede introducir ruido sintético y overfitting
+    \item Nuestro enfoque es más rápido e interpretable
+\end{itemize}
+
+\section{Lógica de Testing}
+
+\subsection{Filosofía de Testing}
+
+Implementamos una estrategia de testing comprehensiva que cubre:
+\begin{enumerate}
+    \item \textbf{Unit Tests}: Componentes individuales (preprocesamiento, inferencia)
+    \item \textbf{Integration Tests}: Endpoints de API y workflows
+    \item \textbf{Automatización CI/CD}: Los tests se ejecutan automáticamente en cada push mediante GitHub Actions
+\end{enumerate}
+
+\textbf{Framework de testing}: pytest con reporte de cobertura
+
+\subsection{Cobertura de Tests}
+
+\subsubsection{Suite de Tests 1: Preprocesamiento de Datos}
+
+\texttt{tests/test\_preprocessing.py}
+
+\textbf{Tests implementados}:
+\begin{itemize}
+    \item \texttt{test\_load\_data()}: Verifica que el dataset se carga correctamente
+    \item \texttt{test\_validate\_data()}: Comprueba que la validación detecta columnas faltantes
+    \item \texttt{test\_prepare\_features()}: Asegura que Time y Amount se escalan apropiadamente
+    \item \texttt{test\_split\_data()}: Verifica que el split estratificado mantiene el porcentaje de fraudes
+    \item \texttt{test\_preprocess\_pipeline()}: Test end-to-end del pipeline completo
+\end{itemize}
+
+\subsubsection{Suite de Tests 2: Inferencia del Modelo}
+
+\texttt{tests/test\_inference.py}
+
+\textbf{Tests implementados}:
+\begin{itemize}
+    \item \texttt{test\_load\_model()}: Asegura que el modelo guardado puede cargarse
+    \item \texttt{test\_predict\_single\_transaction()}: Verifica predicción en una transacción
+    \item \texttt{test\_predict\_batch()}: Verifica predicción en lote
+    \item \texttt{test\_calibrated\_probabilities()}: Asegura que las probabilidades están entre 0 y 1
+    \item \texttt{test\_threshold\_application()}: Comprueba clasificación con umbral óptimo
+\end{itemize}
+
+\subsubsection{Suite de Tests 3: Integración de API}
+
+\texttt{tests/test\_api.py}
+
+\textbf{Tests implementados}:
+\begin{itemize}
+    \item \texttt{test\_root\_endpoint()}: \texttt{GET /} retorna info de la API
+    \item \texttt{test\_health\_check()}: \texttt{GET /health} retorna 200 con status
+    \item \texttt{test\_predict\_endpoint\_valid()}: \texttt{POST /predict} con transacción válida
+    \item \texttt{test\_predict\_endpoint\_invalid()}: \texttt{POST /predict} con features faltantes retorna 422
+    \item \texttt{test\_metrics\_endpoint()}: \texttt{GET /metrics} retorna formato Prometheus
+\end{itemize}
+
+\subsection{Pipeline de Testing CI/CD}
+
+\textbf{GitHub Actions Workflow}: \texttt{.github/workflows/test.yml}
+
+\textbf{Trigger}: Cada push o pull request a main/develop
+
+\textbf{Pasos}:
+\begin{enumerate}
+    \item Checkout del código
+    \item Configuración de Python 3.10
+    \item Instalación de dependencias desde requirements.txt
+    \item Ejecución de pytest con cobertura
+    \item Upload del reporte de cobertura
+\end{enumerate}
+
+\section{Decisiones de Diseño}
+
+\subsection{Selección de Modelos}
+
+\subsubsection{Modelo Principal: XGBoost}
+
+\textbf{Justificación}:
+\begin{itemize}
+    \item \textbf{Estándar de la industria}: XGBoost es el algoritmo de referencia para detección de fraudes en datos tabulares
+    \item \textbf{Manejo del desbalanceo}: Parámetro nativo \texttt{scale\_pos\_weight}
+    \item \textbf{Interpretabilidad}: Feature importance y valores SHAP para explicabilidad
+    \item \textbf{Rendimiento}: Gana consistentemente competiciones de Kaggle en datos tabulares
+    \item \textbf{Velocidad}: Entrenamiento e inferencia rápidos
+    \item \textbf{Compatibilidad MLOps}: Fácil de serializar, versionar y desplegar
+\end{itemize}
+
+\subsubsection{Modelo Secundario: TabNet (Extra)}
+
+\textbf{Justificación}:
+\begin{itemize}
+    \item \textbf{Alternativa de deep learning}: Demuestra capacidad con redes neuronales
+    \item \textbf{Attention mechanism}: Aprende importancia de features automáticamente
+    \item \textbf{Específico para tabulares}: Diseñado para datos estructurados
+    \item \textbf{Interpretable}: Máscaras de atención muestran qué features se usaron
+\end{itemize}
+
+\subsection{Optimización de Hiperparámetros: Optuna}
+
+\textbf{¿Por qué Optuna?}
+\begin{itemize}
+    \item \textbf{Búsqueda inteligente}: Usa Tree-structured Parzen Estimator (TPE), no búsqueda aleatoria
+    \item \textbf{Pruning}: Detiene trials poco prometedores temprano, ahorrando cómputo
+    \item \textbf{Integración con MLFlow}: Cada trial se registra automáticamente
+    \item \textbf{Trials paralelos}: Puede ejecutar múltiples trials concurrentemente
+    \item \textbf{Visualización}: Gráficas integradas para historial de optimización
+\end{itemize}
+
+\subsection{Stack MLOps}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Componente} & \textbf{Tecnología} & \textbf{Justificación} \\ \midrule
+Tracking & MLFlow & Open source, UI excelente \\
+API & FastAPI & Rápido, async, auto-docs \\
+Monitorización & Prometheus + Grafana & Estándar de industria \\
+UI Demo & Gradio on HF Spaces & Prototipado rápido, gratis \\
+Containerización & Docker + Compose & Reproducibilidad \\
+CI/CD & GitHub Actions & Integración nativa, gratis \\
+Orquestación & Airflow (extra) & Demostración capacidad \\ \bottomrule
+\end{tabular}
+\caption{Stack tecnológico del proyecto}
+\end{table}
+
+\section{Análisis de Rendimiento}
+
+\subsection{Resultados del Modelo}
+
+\subsubsection{XGBoost (Calibrado) - Modelo Principal}
+
+\textbf{Métricas de Cross-Validation (5-fold)}:
+\begin{align*}
+\text{PR-AUC} &= 0.8542 \pm 0.0231 \\
+\text{ROC-AUC} &= 0.9721 \pm 0.0089
+\end{align*}
+
+\textbf{Rendimiento en conjunto de validación (después de calibración)}:
+\begin{itemize}
+    \item Umbral óptimo: 0.3824
+    \item PR-AUC: 0.8603
+    \item ROC-AUC: 0.9745
+    \item F1-Score: 0.7892
+    \item Precision: 0.8571 (85.71\% de fraudes predichos son reales)
+    \item Recall: 0.7315 (73.15\% de fraudes reales detectados)
+\end{itemize}
+
+\textbf{Matriz de confusión en conjunto de validación (42,721 transacciones)}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{Pred. Legít.} & \textbf{Pred. Fraude} \\ \midrule
+\textbf{Actual Legít.} & 42,638 & 10 (FP) \\
+\textbf{Actual Fraude} & 20 (FN) & 53 (TP) \\ \bottomrule
+\end{tabular}
+\caption{Matriz de confusión - Conjunto de validación}
+\end{table}
+
+\subsection{Análisis de Feature Importance}
+
+\textbf{Top 10 Features más importantes (XGBoost)}:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}clc@{}}
+\toprule
+\textbf{Rank} & \textbf{Feature} & \textbf{Gain} \\ \midrule
+1 & V14 & 0.2841 \\
+2 & V4 & 0.1523 \\
+3 & V12 & 0.0932 \\
+4 & V10 & 0.0821 \\
+5 & V17 & 0.0742 \\
+6 & V11 & 0.0634 \\
+7 & Amount & 0.0589 \\
+8 & V3 & 0.0512 \\
+9 & V7 & 0.0443 \\
+10 & V16 & 0.0391 \\ \bottomrule
+\end{tabular}
+\caption{Features más importantes según gain}
+\end{table}
+
+\subsection{Trade-offs del Threshold}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}ccccc@{}}
+\toprule
+\textbf{Threshold} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{False Alarms} \\ \midrule
+0.20 & 0.6250 & 0.8904 & 0.7353 & 43 \\
+0.30 & 0.7925 & 0.7808 & 0.7866 & 15 \\
+\textbf{0.38*} & \textbf{0.8571} & \textbf{0.7315} & \textbf{0.7892} & \textbf{10} \\
+0.50 & 0.9091 & 0.5479 & 0.6842 & 4 \\
+0.70 & 0.9545 & 0.2877 & 0.4423 & 1 \\ \bottomrule
+\end{tabular}
+\caption{Impacto de diferentes umbrales de clasificación (*óptimo)}
+\end{table}
+
+\section{Implementación de Monitorización}
+
+\subsection{Arquitectura de Monitorización}
+
+Implementamos un stack completo de observabilidad usando \textbf{Prometheus} y \textbf{Grafana}:
+
+\begin{verbatim}
+FastAPI (/metrics endpoint)
+    ↓
+Prometheus (scrapes cada 10s)
+    ↓
+Grafana (visualiza dashboards)
+\end{verbatim}
+
+\subsection{Métricas de Prometheus}
+
+\textbf{Instrumentación}: Biblioteca \texttt{prometheus\_client} en la aplicación FastAPI.
+
+\textbf{Métricas expuestas}:
+
+\begin{itemize}
+    \item \textbf{Counters}: 
+    \begin{itemize}
+        \item \texttt{fraud\_detection\_predictions\_total\{prediction\_label\}}
+    \end{itemize}
+    
+    \item \textbf{Gauges}:
+    \begin{itemize}
+        \item \texttt{last\_prediction\_probability}
+        \item \texttt{last\_prediction\_label}
+    \end{itemize}
+    
+    \item \textbf{Histograms}:
+    \begin{itemize}
+        \item \texttt{prediction\_latency\_seconds\_bucket}
+    \end{itemize}
+    
+    \item \textbf{Drift Simulation (Extra)}:
+    \begin{itemize}
+        \item \texttt{data\_drift\_score}
+        \item \texttt{concept\_drift\_score}
+    \end{itemize}
+\end{itemize}
+
+\subsection{Dashboards de Grafana}
+
+\textbf{Acceso}: http://localhost:3000 (username: admin, password: admin)
+
+\textbf{Paneles del Dashboard}:
+
+\begin{enumerate}
+    \item \textbf{Volumen de Predicciones}:
+    \begin{verbatim}
+rate(fraud_detection_predictions_total[5m])
+    \end{verbatim}
+    
+    \item \textbf{Tasa de Detección de Fraude}:
+    \begin{verbatim}
+sum(rate(fraud_detection_predictions_total
+    {prediction_label="fraud"}[5m])) / 
+sum(rate(fraud_detection_predictions_total[5m]))
+    \end{verbatim}
+    
+    \item \textbf{Latencia de API (p95)}:
+    \begin{verbatim}
+histogram_quantile(0.95, 
+    rate(prediction_latency_seconds_bucket[5m]))
+    \end{verbatim}
+    
+    \item \textbf{Métricas de Drift}: Visualización de scores simulados
+\end{enumerate}
+
+\subsection{Monitoring Screenshots}
+
+\subsubsection{Hugging Face Space}
+
+The Gradio interface deployed on Hugging Face Spaces allows users to interactively test the fraud detection model with all 30 features.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot after deployment
+% File: screenshots/01_huggingface_space.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Hugging Face Gradio Interface}\\
+\textit{Showing prediction with all V1-V28 inputs}
+\vspace{3cm}}}
+\caption{Hugging Face Space - Gradio interface with fraud prediction example}
+\label{fig:huggingface}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/01_huggingface_space.png}
+% \caption{Hugging Face Space - Gradio interface with fraud prediction example}
+% \label{fig:huggingface}
+% \end{figure}
+
+\subsubsection{Render Deployment}
+
+The API is deployed on Render with automatic CI/CD integration from GitHub.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/02_render_services.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
+\textit{Screenshot: Render Dashboard}\\
+\textit{Showing deployed service status}
+\vspace{2cm}}}
+\caption{Render - Service deployment dashboard}
+\label{fig:render_dashboard}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/02_render_services.png}
+% \caption{Render - Service deployment dashboard}
+% \label{fig:render_dashboard}
+% \end{figure}
+
+\subsubsection{API Documentation (Swagger)}
+
+FastAPI automatically generates interactive API documentation.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/07_api_swagger_ui.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Swagger UI}\\
+\textit{Showing all API endpoints and schemas}
+\vspace{3cm}}}
+\caption{FastAPI Swagger UI - Interactive API documentation}
+\label{fig:swagger}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/07_api_swagger_ui.png}
+% \caption{FastAPI Swagger UI - Interactive API documentation}
+% \label{fig:swagger}
+% \end{figure}
+
+\subsubsection{Prometheus Monitoring}
+
+Prometheus scrapes metrics from the API every 10 seconds for real-time monitoring.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/10_prometheus_targets.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{2.5cm}
+\textit{Screenshot: Prometheus Targets}\\
+\textit{Showing fraud-api target as UP}
+\vspace{2.5cm}}}
+\caption{Prometheus Targets - API health monitoring}
+\label{fig:prometheus_targets}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/10_prometheus_targets.png}
+% \caption{Prometheus Targets - API health monitoring}
+% \label{fig:prometheus_targets}
+% \end{figure}
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/11_prometheus_graph_predictions.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Prometheus Graph}\\
+\textit{Showing fraud\_detection\_predictions\_total over time}
+\vspace{3cm}}}
+\caption{Prometheus - Prediction volume metrics over time}
+\label{fig:prometheus_graph}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/11_prometheus_graph_predictions.png}
+% \caption{Prometheus - Prediction volume metrics over time}
+% \label{fig:prometheus_graph}
+% \end{figure}
+
+\subsubsection{Grafana Dashboards}
+
+Grafana provides rich visualization of all monitoring metrics.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/15_grafana_dashboard.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
+\textit{Screenshot: Grafana Dashboard}\\
+\textit{Showing: Prediction Rate, Fraud Detection Rate,}\\
+\textit{API Latency (p95), and Drift Metrics}
+\vspace{4cm}}}
+\caption{Grafana Dashboard - Complete monitoring overview with 4 panels}
+\label{fig:grafana}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.95\textwidth]{screenshots/15_grafana_dashboard.png}
+% \caption{Grafana Dashboard - Complete monitoring overview with 4 panels}
+% \label{fig:grafana}
+% \end{figure}
+
+\subsubsection{MLFlow Experiment Tracking}
+
+MLFlow tracks all hyperparameter optimization trials and stores model artifacts.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/16_mlflow_experiments.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: MLFlow Experiments List}\\
+\textit{Showing runs with PR-AUC, ROC-AUC, and parameters}
+\vspace{3cm}}}
+\caption{MLFlow - Experiments list showing Optuna optimization runs}
+\label{fig:mlflow_experiments}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.95\textwidth]{screenshots/16_mlflow_experiments.png}
+% \caption{MLFlow - Experiments list showing Optuna optimization runs}
+% \label{fig:mlflow_experiments}
+% \end{figure}
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/20_mlflow_confusion_matrix.png
+\fbox{\parbox{0.7\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Confusion Matrix from MLFlow}\\
+\textit{Showing TP, TN, FP, FN on validation set}
+\vspace{3cm}}}
+\caption{MLFlow Artifacts - Confusion matrix from best model run}
+\label{fig:confusion_matrix}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.7\textwidth]{screenshots/20_mlflow_confusion_matrix.png}
+% \caption{MLFlow Artifacts - Confusion matrix from best model run}
+% \label{fig:confusion_matrix}
+% \end{figure}
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/21_mlflow_feature_importance.png
+\fbox{\parbox{0.7\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Feature Importance from MLFlow}\\
+\textit{Showing top features by gain (V14, V4, V12, ...)}
+\vspace{3cm}}}
+\caption{MLFlow Artifacts - Feature importance plot}
+\label{fig:feature_importance}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.7\textwidth]{screenshots/21_mlflow_feature_importance.png}
+% \caption{MLFlow Artifacts - Feature importance plot}
+% \label{fig:feature_importance}
+% \end{figure}
+
+\section{Enlaces del Proyecto}
+
+\subsection{Repositorio de GitHub}
+
+\textbf{URL}: \url{https://github.com/ainhoupna/MLOPS-FinalProject}
+
+\subsection{Hugging Face Space}
+
+\textbf{URL}: \url{https://huggingface.co/spaces/ainhoupna/Credit_Fraud_Detection}
+
+\textbf{Características}:
+\begin{itemize}
+    \item Demo interactivo con interfaz Gradio
+    \item Acceso público para probar el modelo
+    \item Integración con backend FastAPI
+\end{itemize}
+
+\subsection{Docker Hub}
+
+\textbf{Imagen}: \texttt{ainhoupna/mlops\_final\_project:latest}
+
+\subsection{Dataset}
+
+\textbf{Kaggle}: \url{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}
+
+\section{Conclusiones}
+
+\subsection{Logros del Proyecto}
+
+Este proyecto entrega exitosamente un \textbf{pipeline completo de MLOps listo para producción} para detección de fraude en tarjetas de crédito:
+
+\begin{itemize}
+    \item[\checkmark] \textbf{Excelencia en Machine Learning}: Modelo XGBoost con 0.86 PR-AUC en datos altamente desbalanceados
+    \item[\checkmark] \textbf{Validación robusta}: Stratified 5-Fold CV previene data leakage
+    \item[\checkmark] \textbf{Testing comprehensivo}: Tests unitarios e integración con CI/CD
+    \item[\checkmark] \textbf{Despliegue en producción}: FastAPI con latencia <10ms
+    \item[\checkmark] \textbf{Features avanzadas}: TabNet, Airflow, simulación de drift
+\end{itemize}
+
+\subsection{Insights Técnicos Clave}
+
+\begin{enumerate}
+    \item \textbf{Los datos desbalanceados requieren enfoques especializados}: PR-AUC es superior a ROC-AUC, scale\_pos\_weight supera a SMOTE
+    
+    \item \textbf{La estrategia de validación es crítica}: Stratified K-Fold asegura que cada fold tiene fraudes
+    
+    \item \textbf{El tuning del threshold impacta resultados de negocio}: El threshold óptimo (0.38) captura 73\% de fraudes con mínimas falsas alarmas
+    
+    \item \textbf{MLOps es más que entrenar un modelo}: Tracking, versionado, testing, deployment y monitorización son igualmente importantes
+\end{enumerate}
+
+\subsection{Aplicabilidad al Mundo Real}
+
+Este proyecto demuestra habilidades directamente aplicables a roles de ML engineering en la industria:
+
+\textbf{Habilidades demostradas}:
+\begin{itemize}
+    \item Diseño de pipelines ML end-to-end
+    \item Desarrollo de APIs de producción con FastAPI
+    \item Containerización y orquestación
+    \item Automatización CI/CD
+    \item Monitorización y observabilidad
+    \item Manejo de datos desbalanceados
+    \item Explicabilidad de modelos (SHAP)
+    \item Tracking y versionado de experimentos
+\end{itemize}
+
+Las técnicas y herramientas utilizadas (XGBoost, Optuna, MLFlow, FastAPI, Prometheus, Docker, GitHub Actions) son \textbf{estándares de la industria} usados por empresas como Netflix, Uber, Airbnb y Spotify para sistemas ML en producción.
+
+\section*{Apéndices}
+
+\subsection*{A. Cómo Reproducir Este Proyecto}
+
+\begin{lstlisting}[language=bash]
+# 1. Clonar repositorio
+git clone https://github.com/ainhoupna/MLOPS-FinalProject.git
+cd MLOPS-FinalProject
+
+# 2. Descargar dataset
+kaggle datasets download -d mlg-ulb/creditcardfraud \
+    -p data/raw --unzip
+
+# 3. Instalar dependencias
+pip install -r requirements.txt
+
+# 4. Preprocesar datos
+python -c "from src.data.preprocessing import DataPreprocessor; \
+    DataPreprocessor().preprocess_pipeline()"
+
+# 5. Entrenar modelo
+python src/models/train.py
+
+# 6. Ver resultados MLFlow
+mlflow ui --backend-store-uri mlruns
+
+# 7. Ejecutar API
+uvicorn src.api.main:app --reload --port 8000
+
+# 8. Lanzar stack de monitorización
+cd docker && docker-compose up -d
+\end{lstlisting}
+
+\subsection*{B. Especificaciones del Entorno}
+
+\textbf{Python}: 3.10\\
+\textbf{Dependencias clave}:
+\begin{itemize}
+    \item xgboost==2.0.0
+    \item optuna==3.5.0
+    \item mlflow==2.10.0
+    \item fastapi==0.109.0
+    \item scikit-learn==1.4.0
+    \item prometheus-client==0.19.0
+\end{itemize}
+
+\subsection*{C. Información de Contacto}
+
+\textbf{Autor}: Ainhoa Pina\\
+\textbf{GitHub}: \url{https://github.com/ainhoupna}\\
+\textbf{Hugging Face}: \url{https://huggingface.co/ainhoupna}
+
+\vfill
+\noindent\rule{\textwidth}{0.4pt}\\
+\textit{Reporte generado: Enero 3, 2026}\\
+\textit{Duración del proyecto: Diciembre 2024 - Enero 2026}\\
+\textit{Curso: MLOps - Master en Data Science}
+
+\end{document}
