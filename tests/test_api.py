@@ -32,14 +32,16 @@ class TestAPI:
         return transaction
 
     def test_root_endpoint(self, client):
-        """Test root endpoint."""
+        """Test root endpoint returns HTML landing page."""
         response = client.get("/")
         assert response.status_code == 200
-
-        data = response.json()
-        assert "message" in data
-        assert "endpoints" in data
-
+        
+        # Check it's HTML, not JSON
+        assert "text/html" in response.headers.get("content-type", "")
+        
+        # Check for key content in HTML
+        assert "Credit Card Fraud Detection" in response.text
+        assert "API" in response.text
     @patch("src.api.main.detector")
     def test_health_endpoint_healthy(self, mock_detector, client):
         """Test health endpoint when model is loaded."""
