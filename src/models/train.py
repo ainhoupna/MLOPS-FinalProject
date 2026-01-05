@@ -277,7 +277,13 @@ class FraudDetectionTrainer:
             # Calibrate model
             print("Calibrating model probabilities...")
             calibrated_model = CalibratedClassifierCV(best_model, cv="prefit", method="sigmoid")
-            calibrated_model.fit(X_val, y_val)
+            
+            # Ensure data types are correct for sklearn calibration (expects float64)
+            # This fixes "ValueError: Buffer dtype mismatch, expected 'const double' but got 'float'"
+            X_val_calib = X_val.astype(np.float64)
+            y_val_calib = y_val.astype(int)
+            
+            calibrated_model.fit(X_val_calib, y_val_calib)
             
             # Use calibrated model for predictions
             y_val_pred_proba = calibrated_model.predict_proba(X_val)[:, 1]
