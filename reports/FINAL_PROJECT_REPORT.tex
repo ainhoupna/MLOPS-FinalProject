@@ -29,12 +29,12 @@
     citecolor=blue
 }
 
-\title{\textbf{Detección de Fraude en Tarjetas de Crédito\\
-Proyecto Final de MLOps}}
+\title{\textbf{Credit Card Fraud Detection\\
+MLOps Final Project}}
 \author{Ainhoa Pina\\
-\small Master en Data Science\\
-\small Curso 2024/2025}
-\date{Enero 2026}
+\small Master in Data Science\\
+\small Academic Year 2024/2025}
+\date{January 2026}
 
 \begin{document}
 
@@ -702,7 +702,188 @@ MLFlow tracks all hyperparameter optimization trials and stores model artifacts.
 % \label{fig:feature_importance}
 % \end{figure}
 
-\section{Enlaces del Proyecto}
+\section{Workflow Orchestration with Airflow}
+
+\subsection{What is Apache Airflow?}
+
+Apache Airflow is an open-source platform for developing, scheduling, and monitoring batch-oriented workflows. It allows you to programmatically author and schedule workflows, then monitor them via a built-in UI.
+
+\textbf{Key Concepts:}
+\begin{itemize}
+    \item \textbf{DAG (Directed Acyclic Graph)}: A collection of tasks with dependencies
+    \item \textbf{Task}: A unit of work (Python function, bash command, etc.)
+    \item \textbf{Operator}: Template for predefined tasks (PythonOperator, BashOperator)
+    \item \textbf{Scheduler}: Triggers tasks based on schedule or dependencies
+    \item \textbf{Executor}: Defines how tasks are executed (Sequential, Local, Cellar)
+\end{itemize}
+
+\subsection{Airflow in This Project}
+
+While \textbf{GitHub Actions} is the primary CI/CD tool for this project, Airflow was implemented as an \textbf{extra feature} to demonstrate enterprise-level ML pipeline orchestration capabilities.
+
+\textbf{Implementation Status:}
+\begin{itemize}
+    \item \textbf{Configured}: Yes, fully configured with DAG and tasks
+    \item \textbf{Running by Default}: No (GitHub Actions is preferred for CI/CD)
+    \item \textbf{Purpose}: Demonstrate knowledge of workflow orchestration at scale
+\end{itemize}
+
+\subsection{DAG Implementation: fraud\_detection\_pipeline}
+
+\textbf{File}: \texttt{airflow/dags/fraud\_detection\_dag.py}
+
+\textbf{Schedule}: Weekly execution (Sundays at midnight)
+
+\textbf{Tasks}:
+\begin{enumerate}
+    \item \texttt{download\_data}: Downloads Credit Card Fraud dataset from Kaggle
+    \begin{itemize}
+        \item Type: BashOperator
+        \item Command: \texttt{kaggle datasets download}
+    \end{itemize}
+    
+    \item \texttt{preprocess\_data}: Preprocesses and splits data into train/val/test sets
+    \begin{itemize}
+        \item Type: PythonOperator
+        \item Function: \texttt{DataPreprocessor().preprocess\_pipeline()}
+    \end{itemize}
+    
+    \item \texttt{train\_xgboost}: Trains XGBoost model with Optuna (parallel)
+    \begin{itemize}
+        \item Type: PythonOperator
+        \item Function: Executes \texttt{src/models/train.py}
+    \end{itemize}
+    
+    \item \texttt{train\_tabnet}: Trains TabNet model (parallel with XGBoost)
+    \begin{itemize}
+        \item Type: PythonOperator
+        \item Function: Executes \texttt{src/models/tabnet\_train.py}
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Task Dependencies}:
+\begin{verbatim}
+download_data >> preprocess_data >> [train_xgboost, train_tabnet]
+\end{verbatim}
+
+The last two tasks run in parallel after preprocessing completes.
+
+\subsection{Docker Configuration}
+
+Airflow is deployed using Docker Compose with 3 services:
+
+\begin{itemize}
+    \item \textbf{airflow-webserver}: Web UI (port 8080)
+    \item \textbf{airflow-scheduler}: Task scheduler and executor
+    \item \textbf{airflow-db}: PostgreSQL database for metadata storage
+\end{itemize}
+
+\textbf{Deployment command}:
+\begin{lstlisting}[language=bash]
+cd docker
+docker compose up airflow-webserver airflow-scheduler airflow-db -d
+\end{lstlisting}
+
+\textbf{Access}: \url{http://localhost:8080}
+
+\textbf{Credentials}: Username \texttt{airflow}, Password \texttt{airflow}
+
+\subsection{Airflow vs GitHub Actions}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Aspect} & \textbf{Airflow} & \textbf{GitHub Actions} \\ \midrule
+Use Case & Complex workflows & CI/CD pipelines \\
+Execution & Local/self-hosted & GitHub cloud \\
+Scheduling & Cron + dependencies & Events + cron \\
+Monitoring & Rich UI & GitHub interface \\
+Resource Usage & Heavy (3 containers) & Lightweight \\
+\textbf{Chosen for} & Demonstration & Production CI/CD \\ \bottomrule
+\end{tabular}
+\caption{Comparison: Airflow vs GitHub Actions}
+\end{table}
+
+\textbf{Why GitHub Actions was chosen as primary}:
+\begin{itemize}
+    \item Lighter footprint (no local services required)
+    \item Better integration with Git workflow
+    \item Automatic triggers on push/PR
+    \item Free for public repositories
+    \item Sufficient for this project's CI/CD needs
+\end{itemize}
+
+\subsection{Airflow Screenshots}
+
+\subsubsection{DAGs List View}
+
+The main Airflow UI showing all available DAGs.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/24_airflow_dags_list.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: Airflow DAGs List}\\
+\textit{Showing fraud\_detection\_pipeline DAG}
+\vspace{3cm}}}
+\caption{Airflow UI - DAGs list showing fraud detection pipeline}
+\label{fig:airflow_dags}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/24_airflow_dags_list.png}
+% \caption{Airflow UI - DAGs list showing fraud detection pipeline}
+% \label{fig:airflow_dags}
+% \end{figure}
+
+\subsubsection{DAG Graph View}
+
+Visualization of task dependencies and execution flow.
+
+\begin{figure}[H]
+\centering
+% TODO: Replace with actual screenshot
+% File: screenshots/25_airflow_dag_graph.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
+\textit{Screenshot: DAG Graph View}\\
+\textit{Showing task flow: download → preprocess → parallel training}
+\vspace{3cm}}}
+\caption{Airflow - Graph view of fraud detection DAG with task dependencies}
+\label{fig:airflow_graph}
+\end{figure}
+
+% Uncomment when screenshot is available:
+% \begin{figure}[H]
+% \centering
+% \includegraphics[width=0.9\textwidth]{screenshots/25_airflow_dag_graph.png}
+% \caption{Airflow - Graph view of fraud detection DAG with task dependencies}
+% \label{fig:airflow_graph}
+% \end{figure}
+
+\subsection{When to Use Airflow in Production}
+
+\textbf{Airflow is ideal for}:
+\begin{itemize}
+    \item Complex, multi-step ML pipelines with many dependencies
+    \item Data engineering workflows (ETL/ELT)
+    \item Scheduled batch processing jobs
+    \item Workflows requiring backfilling historical data
+    \item Enterprise environments with dedicated infrastructure
+\end{itemize}
+
+\textbf{Consider alternatives when}:
+\begin{itemize}
+    \item Workflows are simple (1-3 steps)
+    \item Real-time processing is required (use Apache Kafka/Flink)
+    \item CI/CD is the primary use case (use GitHub Actions/GitLab CI)
+    \item Resource constraints exist (Airflow requires significant resources)
+\end{itemize}
+
+\section{Project Links}
 
 \subsection{Repositorio de GitHub}
 
