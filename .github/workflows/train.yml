@@ -42,12 +42,14 @@ jobs:
     
     - name: Preprocess data
       run: |
+        export PYTHONPATH=$PYTHONPATH:.
         python -c "from src.data.preprocessing import DataPreprocessor; DataPreprocessor().preprocess_pipeline()"
     
     - name: Train model
       env:
         MLFLOW_TRACKING_URI: ${{ env.MLFLOW_DIR }}
       run: |
+        export PYTHONPATH=$PYTHONPATH:.
         python src/models/train.py
     
     - name: Upload model artifacts
