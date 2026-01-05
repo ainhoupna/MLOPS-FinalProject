@@ -7,7 +7,6 @@ from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel, Field
 import time
 import random
-import math
 import os
 import numpy as np
 from collections import deque

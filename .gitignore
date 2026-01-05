@@ -68,3 +68,6 @@ htmlcov/
 
 # Kaggle
 .kaggle/
+kaggle/
+kaggle.json
+

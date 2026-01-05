@@ -3,8 +3,7 @@ Prometheus metrics for monitoring fraud detection model.
 """
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, REGISTRY
-from scipy.stats import ks_2samp, wasserstein_distance
-import numpy as np
+from scipy.stats import ks_2samp
 
 
 # Counters
