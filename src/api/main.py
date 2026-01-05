@@ -2,16 +2,18 @@
 FastAPI application for serving fraud detection model.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel, Field
 import time
 import random
 import math
 import os
+import numpy as np
+from collections import deque
 
 from src.models.inference import FraudDetector
-from src.monitoring.metrics import metrics_collector
+from src.monitoring.metrics import metrics_collector, drift_detector, fairness_monitor
 
 
 # Initialize FastAPI app
@@ -23,6 +25,13 @@ app = FastAPI(
 
 # Initialize model
 detector = None
+
+# Monitoring Buffers & Reference
+# Buffer last 1000 transactions for drift calculation
+transaction_buffer = deque(maxlen=1000)
+# Reference data: PCA components V1-V28 are roughly N(0,1) in the original dataset
+# We'll use a fixed standard normal sample as reference for V1 drift
+REFERENCE_DATA_V1 = np.random.normal(0, 1, 1000).tolist()
 
 
 @app.on_event("startup")
@@ -139,6 +148,7 @@ async def root():
                 "predict": "/predict",
                 "health": "/health",
                 "metrics": "/metrics",
+                "retrain": "/retrain",
                 "docs": "/docs",
             },
             "links": {
@@ -183,6 +193,9 @@ async def predict(transaction: TransactionFeatures):
         features = transaction.dict()
         result = detector.predict(features)
 
+        # Buffer data for drift detection (use V1 as proxy for distribution)
+        transaction_buffer.append(transaction.V1)
+
         # Calculate latency
         latency = time.time() - start_time
         latency_ms = latency * 1000
@@ -206,28 +219,51 @@ async def predict(transaction: TransactionFeatures):
 @app.get("/metrics")
 async def get_metrics():
     """
-    Prometheus metrics endpoint with simulated drift.
+    Prometheus metrics endpoint with simulated and real drift detection.
 
     Returns:
         Metrics in Prometheus exposition format
     """
-    # Simulate drift: slowly increasing over time with some noise
-    # Using time to create a trend
-    current_time = time.time()
-    
-    # Data drift: slow oscillation + noise
-    data_drift = 0.1 + 0.05 * math.sin(current_time / 3600) + random.uniform(0, 0.02)
-    
-    # Concept drift: slow upward trend (simulating model degradation)
-    # Starts at 0.05, increases by 0.01 every hour
+    # 1. Real Data Drift (KS-test on V1)
+    if len(transaction_buffer) >= 50: # Require minimum samples
+        data_drift = drift_detector.compute_drift(REFERENCE_DATA_V1, list(transaction_buffer))
+    else:
+        data_drift = 0.0 # Not enough data yet
+
+    # 2. Simulated Concept Drift (Model degrading over time)
     start_time = 1735038000  # Fixed reference point (Dec 24 2024)
+    current_time = time.time()
     hours_passed = (current_time - start_time) / 3600
     concept_drift = min(0.9, 0.05 + (hours_passed * 0.001) + random.uniform(0, 0.05))
     
+    # 3. Simulated Fairness Issue
+    fairness_val = fairness_monitor.simulate_fairness_issue()
+    
+    # Record all
     metrics_collector.record_drift(data_drift, concept_drift)
+    metrics_collector.record_fairness(fairness_val)
     
     metrics_data = metrics_collector.get_metrics()
     return Response(content=metrics_data, media_type="text/plain")
+
+
+@app.post("/retrain")
+async def retrain_model(background_tasks: BackgroundTasks):
+    """
+    Trigger model retraining. 
+    This is called by Alertmanager when drift/fairness thresholds are breached.
+    """
+    def mock_retraining_process():
+        print("🔄 [RETRAINING] Started automatic retraining process...")
+        time.sleep(2)
+        print("📥 [RETRAINING] Fetching new data...")
+        time.sleep(2)
+        print("🧠 [RETRAINING] Training new model version...")
+        time.sleep(2)
+        print("✅ [RETRAINING] Model successfully retrained and deployed!")
+    
+    background_tasks.add_task(mock_retraining_process)
+    return {"status": "accepted", "message": "Retraining process started"}
 
 
 if __name__ == "__main__":

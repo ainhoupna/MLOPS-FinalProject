@@ -1,0 +1,29 @@
+groups:
+  - name: fraud_detection_alerts
+    rules:
+      - alert: HighDataDrift
+        expr: data_drift_score > 0.3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Significant data drift detected"
+          description: "Data drift score is {{ $value }}, indicating a shift in input distribution."
+
+      - alert: HighConceptDrift
+        expr: concept_drift_score > 0.5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Significant concept drift detected"
+          description: "Concept drift score is {{ $value }}, model performance may be degrading."
+
+      - alert: FairnessIssueDetected
+        expr: fairness_score > 0.1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Potential fairness issue detected"
+          description: "Fairness metric score is {{ $value }}, indicating potential bias."
