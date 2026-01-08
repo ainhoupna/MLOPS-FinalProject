@@ -7,6 +7,9 @@ numpy==1.26.3
 # Hyperparameter Optimization
 optuna==3.5.0
 
+# Experiment Tracking
+mlflow==2.10.0
+
 # API Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0

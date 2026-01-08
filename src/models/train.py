@@ -29,32 +29,6 @@ import pickle
 from src.data.preprocessing import DataPreprocessor, get_X_y
 
 
-from sklearn.base import BaseEstimator, ClassifierMixin
-
-class Float64Wrapper(BaseEstimator, ClassifierMixin):
-    """Wrapper to force predict_proba output to float64 for sklearn calibration."""
-    def __init__(self, base_estimator):
-        self.base_estimator = base_estimator
-        self.classes_ = base_estimator.classes_ # Required for validation
-        
-    def fit(self, X, y):
-        self.base_estimator.fit(X, y)
-        return self
-
-    def predict(self, X):
-        return self.base_estimator.predict(X)
-
-    def predict_proba(self, X):
-        # Force float64 output
-        return self.base_estimator.predict_proba(X).astype(np.float64)
-
-    def __sklearn_is_fitted__(self):
-        # Allow check_is_fitted to pass (sklearn > 0.22 uses specific checks, but typically presence of attributes suffices)
-        # However, for 'prefit', sklearn usually assumes it is valid. 
-        # But safest is to delegate or just rely on 'prefit' behavior which trusts the user.
-        return True
-
-
 class FraudDetectionTrainer:
     """Trainer for credit card fraud detection model."""
 
@@ -301,18 +275,29 @@ class FraudDetectionTrainer:
             best_model = xgb.XGBClassifier(**best_params)
             best_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
-            # Calibrate model
+            # Calibrate model - use isotonic method which works better for tree models
             print("Calibrating model probabilities...")
             
-            # Wrap model to ensure float64 output for calibration (resolves Cython dtype mismatch)
-            wrapped_model = Float64Wrapper(best_model)
-            calibrated_model = CalibratedClassifierCV(wrapped_model, cv="prefit", method="sigmoid")
+            try:
+                from sklearn.frozen import FrozenEstimator
+                # sklearn >= 1.6 recommended approach
+                estimator_to_calibrate = FrozenEstimator(best_model)
+                cv_param = None # cv is ignored when using FrozenEstimator
+            except ImportError:
+                # Fallback for older sklearn
+                estimator_to_calibrate = best_model
+                cv_param = "prefit"
+
+            # Use isotonic calibration (better for tree-based models than sigmoid)
+            calibrated_model = CalibratedClassifierCV(
+                estimator_to_calibrate, 
+                method="isotonic",
+                cv=cv_param,
+                ensemble=False
+            )
             
-            # Ensure data types are correct for sklearn calibration (expects float64)
-            X_val_calib = X_val.astype(np.float64)
-            y_val_calib = y_val.astype(int)
-            
-            calibrated_model.fit(X_val_calib, y_val_calib)
+            # Fit calibration on validation set
+            calibrated_model.fit(X_val, y_val)
             
             # Use calibrated model for predictions
             y_val_pred_proba = calibrated_model.predict_proba(X_val)[:, 1]

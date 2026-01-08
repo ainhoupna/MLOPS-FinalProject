@@ -7,7 +7,7 @@ import pickle
 import pandas as pd
 import xgboost as xgb
 from typing import Dict, Union
-import mlflow
+# import mlflow  # Commented out temporarily - not needed for API inference
 
 
 class FraudDetector:
@@ -157,30 +157,31 @@ class FraudDetector:
         return results
 
 
-def load_from_mlflow(run_id: str, tracking_uri: str = "mlruns") -> FraudDetector:
-    """
-    Load model from MLFlow.
-
-    Args:
-        run_id: MLFlow run ID
-        tracking_uri: MLFlow tracking URI
-
-    Returns:
-        FraudDetector instance
-    """
-    mlflow.set_tracking_uri(tracking_uri)
-
-    # Load model from MLFlow
-    model_uri = f"runs:/{run_id}/model"
-    model = mlflow.xgboost.load_model(model_uri)
-
-    # Create detector instance
-    detector = FraudDetector.__new__(FraudDetector)
-    detector.model = model
-    detector.threshold = 0.5  # Default, should load from artifacts
-    detector.scaler = None
-
-    return detector
+# Temporarily commented out - requires mlflow dependency
+# def load_from_mlflow(run_id: str, tracking_uri: str = "mlruns") -> FraudDetector:
+#     """
+#     Load model from MLFlow.
+#
+#     Args:
+#         run_id: MLFlow run ID
+#         tracking_uri: MLFlow tracking URI
+#
+#     Returns:
+#         FraudDetector instance
+#     """
+#     mlflow.set_tracking_uri(tracking_uri)
+#
+#     # Load model from MLFlow
+#     model_uri = f"runs:/{run_id}/model"
+#     model = mlflow.xgboost.load_model(model_uri)
+#
+#     # Create detector instance
+#     detector = FraudDetector.__new__(FraudDetector)
+#     detector.model = model
+#     detector.threshold = 0.5  # Default, should load from artifacts
+#     detector.scaler = None
+#
+#     return detector
 
 
 if __name__ == "__main__":

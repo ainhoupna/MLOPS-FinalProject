@@ -10,6 +10,7 @@
 \usepackage{booktabs}
 \usepackage{float}
 \usepackage{amsmath}
+\setcounter{secnumdepth}{4}
 
 % Code listing configuration
 \lstset{
@@ -29,11 +30,10 @@
     citecolor=blue
 }
 
-\title{\textbf{Credit Card Fraud Detection\\
-MLOps Final Project}}
-\author{Ainhoa Pina\\
-\small Master in Data Science\\
-\small Academic Year 2024/2025}
+\title{\textbf{Credit Card Fraud Detection\\ MLOps Final Project}}
+\author{Ainhoa Del Rey, Iñigo Goikoetxea and Karim Abu-Shams\\
+\small Master in Machine Learning\\
+\small Academic Year 2025/2026}
 \date{January 2026}
 
 \begin{document}
@@ -43,549 +43,139 @@ MLOps Final Project}}
 \newpage
 
 \section{Problem Description}
-
 \subsection{Classification Problem}
-
-This project addresses the challenge of \textbf{detecting fraudulent transactions} in credit card operations using a highly imbalanced dataset. The task is a \textbf{binary classification problem} where each transaction must be classified as:
-
+This project addresses the challenge of detecting fraudulent transactions in credit card operations using a highly imbalanced dataset. The task is a binary classification problem where each transaction must be classified as:
 \begin{itemize}
     \item \textbf{Class 0}: Legitimate transaction
     \item \textbf{Class 1}: Fraudulent transaction
 \end{itemize}
 
 \subsection{Dataset Characteristics}
+\textbf{Source}: \href{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}{Kaggle - Credit Card Fraud Detection Dataset} \\
+\textbf{Key Statistics}: 284,807 total transactions with only 492 frauds (0.17\%). This 577:1 imbalance ratio requires specialized handling.
 
-\textbf{Source}: \href{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}{Kaggle - Credit Card Fraud Detection Dataset}
+\subsection{Exploratory Data Analysis (EDA)}
+A comprehensive Exploratory Data Analysis was conducted to understand the dataset's properties. The full report can be found in \texttt{reports/EDA\_Report.md}.
 
-\textbf{Key Statistics}:
+\textbf{Key Findings}:
 \begin{itemize}
-    \item Total transactions: 284,807
-    \item Fraudulent transactions: 492 (0.17\%)
-    \item Legitimate transactions: 284,315 (99.83\%)
-    \item Imbalance ratio: 577:1
+    \item \textbf{Class Imbalance}: Confirmed the extreme 99.83\% vs 0.17\% split.
+    \item \textbf{Time Patterns}: Cyclical patterns observed in transaction times, suggesting day/night cycles, though fraud is distributed relatively uniformly.
+    \item \textbf{Amount Distribution}: Right-skewed distribution. Frauds tend to be smaller in value but include some high-value outliers.
+    \item \textbf{Feature Correlations}:
+    \begin{itemize}
+        \item \textbf{Negative Correlation with Fraud}: V14, V17, V12 (Lower values $\rightarrow$ Higher fraud risk)
+        \item \textbf{Positive Correlation with Fraud}: V11, V4 (Higher values $\rightarrow$ Higher fraud risk)
+    \end{itemize}
+    \item \textbf{Discriminative Features}: V14, V12, and V17 show the most distinct distributions between classes, making them strong predictors.
 \end{itemize}
 
-\textbf{Features}:
-\begin{itemize}
-    \item \texttt{Time}: Seconds elapsed since the first transaction (range: 0-172,792 s $\approx$ 48 hours)
-    \item \texttt{V1-V28}: PCA-transformed features (anonymized for privacy)
-    \item \texttt{Amount}: Transaction amount in euros (range: €0 - €25,691)
-    \item \texttt{Class}: Target variable (0 = legitimate, 1 = fraud)
-\end{itemize}
-
-Total features: 30 (Time + Amount + V1-V28)
-
-\subsection{The Challenge: Class Imbalance}
-
-With only \textbf{0.17\% fraud cases}, the dataset presents extreme imbalance that poses several challenges:
-
-\begin{enumerate}
-    \item \textbf{Model bias}: Traditional algorithms tend to predict everything as legitimate (achieving 99.83\% accuracy doing nothing)
-    \item \textbf{Metric selection}: Standard accuracy is misleading; specialized metrics are required
-    \item \textbf{Evaluation complexity}: Models must be carefully evaluated to ensure they detect fraud, not just achieve high accuracy
-    \item \textbf{Real-world impact}: Missing a fraud (False Negative) costs money, but false alarms (False Positives) annoy customers
-\end{enumerate}
-
+\section{Data Strategy}
 \subsection{Feature Scaling}
-
-\textbf{Problem}: The \texttt{Time} and \texttt{Amount} features have very different scales:
-\begin{itemize}
-    \item \texttt{Time}: Range 0 - 172,792 seconds (large values)
-    \item \texttt{Amount}: Range €0 - €25,691 (medium values)
-    \item \texttt{V1-V28}: Already normalized via PCA
-\end{itemize}
-
-\textbf{Solution}: We apply \textbf{StandardScaler} (z-score normalization) to \texttt{Time} and \texttt{Amount}.
-
-\textbf{StandardScaler Formula}:
+The \texttt{Time} and \texttt{Amount} features require normalization to match the PCA-transformed \texttt{V1-V28} features. We apply StandardScaler:
 $$z = \frac{x - \mu}{\sigma}$$
-
-where:
-\begin{itemize}
-    \item $x$ = original value
-    \item $\mu$ = mean of the training data
-    \item $\sigma$ = standard deviation of the training data
-    \item $z$ = scaled value (centered at 0, unit variance)
-\end{itemize}
-
-\textbf{Implementation}:
-\begin{lstlisting}[language=Python]
-from sklearn.preprocessing import StandardScaler
-
-class DataPreprocessor:
-    def __init__(self):
-        self.scaler = StandardScaler()
-    
-    def prepare_features(self, df, fit_scaler=True):
-        """Scale Time and Amount features."""
-        df = df.copy()
-        
-        if fit_scaler:
-            # Fit scaler on training data ONLY
-            self.scaler.fit(df[['Time', 'Amount']])
-        
-        # Transform Time and Amount
-        df[['Time', 'Amount']] = self.scaler.transform(
-            df[['Time', 'Amount']]
-        )
-        
-        return df
-\end{lstlisting}
-
-\textbf{Preventing Data Leakage}:
-\begin{itemize}
-    \item Scaler is \textbf{fit only on training data} (\texttt{fit\_scaler=True})
-    \item Validation and test sets use \texttt{fit\_scaler=False}
-    \item They are transformed using $\mu$ and $\sigma$ from training data
-    \item This prevents information leakage from validation/test sets
-\end{itemize}
-
-\section{Model Validation Scheme}
-
-\subsection{Methodology: Stratified K-Fold Cross-Validation}
-
-We implemented \textbf{Stratified 5-Fold Cross-Validation} for hyperparameter optimization with Optuna.
-
-\textbf{Important}: The 5-Fold CV is applied \textbf{only to the training set (70\%)}, not the entire dataset. This is used during hyperparameter search to evaluate different configurations robustly.
-
-\textbf{Justification}:
-
-\begin{enumerate}
-    \item \textbf{Stratification is critical for imbalanced data}:
-    \begin{itemize}
-        \item Without stratification, some folds could have 0\% frauds
-        \item Stratified splits maintain exactly 0.17\% frauds in each fold
-        \item Ensures each fold is representative of the real distribution
-    \end{itemize}
-    
-    \item \textbf{5-Fold provides robust estimates}:
-    \begin{itemize}
-        \item The training set (70\%) is divided into 5 folds
-        \item Each fold uses 80\% of the training set for training, 20\% for validation
-        \item Model is trained and evaluated 5 times on different splits
-        \item Final metric is the average across 5 folds, reducing variance
-        \item Standard deviation quantifies uncertainty in estimates
-    \end{itemize}
-    
-    \item \textbf{Prevents data leakage}:
-    \begin{itemize}
-        \item Data is split BEFORE any preprocessing
-        \item Scaler is fit only on training folds
-        \item MLFlow logs each fold independently
-    \end{itemize}
-\end{enumerate}
-
-\textbf{Implementation}:
-\begin{lstlisting}[language=Python]
-from sklearn.model_selection import StratifiedKFold
-
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-
-for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-    X_train_fold = X.iloc[train_idx]
-    X_val_fold = X.iloc[val_idx]
-    y_train_fold = y.iloc[train_idx]
-    y_val_fold = y.iloc[val_idx]
-    
-    # Train model on this fold
-    model.fit(X_train_fold, y_train_fold)
-    
-    # Evaluate on validation fold
-    y_pred_proba = model.predict_proba(X_val_fold)[:, 1]
-    pr_auc = average_precision_score(y_val_fold, y_pred_proba)
-    pr_auc_scores.append(pr_auc)
-
-# Final metric: mean ± std across folds
-mean_pr_auc = np.mean(pr_auc_scores)
-std_pr_auc = np.std(pr_auc_scores)
-\end{lstlisting}
+To prevent data leakage, the scaler is fit only on the training data and then applied to the validation and test sets.
 
 \subsection{Data Split Strategy}
 
-\textbf{Initial three-way split of the entire dataset}:
+We use a three-way split:
 \begin{itemize}
     \item \textbf{Training Set}: 70\% (199,365 transactions, $\sim$344 frauds)
     \item \textbf{Validation Set}: 15\% (42,721 transactions, $\sim$73 frauds)
     \item \textbf{Test Set}: 15\% (42,721 transactions, $\sim$75 frauds)
 \end{itemize}
 
-All splits use \textbf{stratification} to maintain class balance.
+\section{Model Design}
+\subsection{Primary Model: XGBoost}
+XGBoost (Extreme Gradient Boosting) was selected as the primary production model
+as indicated in the task. The algorithm’s native scale pos weight parameter makes it particularly well-suited for handling the extreme class imbalance present in our fraud detection problem without needing synthetic oversampling like SMOTE (
+which can introduce noise and overfitting). We use a weight factor of approximately 577:
+\begin{lstlisting}[language=Python]
+scale_pos_weight = (y == 0).sum() / (y == 1).sum()  # approx 577
+params["scale_pos_weight"] = scale_pos_weight
+\end{lstlisting}
+This forces the model to penalize errors on fraud cases 577x more heavily.
+\\
+Overall, XGBoost offers high speed, low latency, and excellent interpretability via SHAP values.
 
-\subsection{How CV and Split Work Together}
+\subsection{Secondary Model: TabNet (Experimental)}
+TabNet was implemented as a secondary  model to demonstrate deep learning capabilities and provide an alternative approach to the fraud detection problem. Its attention mechanism allows it to learn feature importance dynamically during learning. Due to longer training times, it remains an experimental alternative to the automated XGBoost pipeline.
 
-The validation workflow consists of two stages:
 
-\textbf{Stage 1: Hyperparameter Optimization (HPO)}
-\begin{enumerate}
-    \item Use \textbf{only the training set (70\%)}
-    \item Apply 5-Fold Stratified CV within this set
-    \item Each Optuna trial is evaluated using the mean PR-AUC across 5 folds
-    \item Select best hyperparameters based on CV performance
-\end{enumerate}
+\section{Model Validation and Optimization}
+\subsection{Stratified K-Fold Cross-Validation}
+We utilized Stratified 5-Fold Cross-Validation on the training set to ensure robust hyperparameter optimization via Optuna. This methodology is essential for imbalanced data, as stratification guarantees the 0.17\% fraud rate is preserved across all folds, preventing biased evaluations. By averaging performance across five distinct iterations, we reduce metric variance and obtain a more reliable estimate of model performance. Furthermore, this approach strictly prevents data leakage by ensuring that feature scaling and preprocessing parameters are derived solely from the training folds before being applied to the validation subsets.
 
-\textbf{Stage 2: Final Model Training and Evaluation}
-\begin{enumerate}
-    \item Train the model with best hyperparameters on the \textbf{entire training set (70\%)}
-    \item Evaluate on the \textbf{validation set (15\%)} for final metrics
-    \item \textbf{Test set (15\%)} remains held out (optional final check)
-\end{enumerate}
-
-This approach ensures:
+\subsection{Hyperparameter Optimization: Optuna}
+Optuna uses the Tree-structured Parzen Estimator (TPE) to learn from past trials. 
 \begin{itemize}
-    \item Robust hyperparameter selection via CV
-    \item Unbiased final evaluation on unseen validation data
-    \item Maximum data usage for final model training
+    \item \textbf{Automatic Pruning}: Terminates unpromising trials early, saving hours of compute.
+    \item \textbf{MLFlow Integration}: Every trial is automatically logged for full reproducibility.
 \end{itemize}
+
+It has automatic pruning, which stops unpromising trials early in the training process, reducing computational waste.  The framework’s native integration with MLFlow ensures that every trial—including its hyperparameters, metrics, and artifacts—is automatically logged and versioned. 
 
 \subsection{Metric Selection}
 
-We use two categories of metrics:
+\paragraph{PR-AUC (Precision-Recall Area Under Curve):} Our primary metric. It focuses on the minority class and is more informative than ROC-AUC for rare events
 
-\subsubsection{Threshold-Independent Metrics}
+\paragraph{ROC-AUC:} Used as a secondary metric for comparison, but can be optimistic on imbalanced data.
 
-\textbf{1. PR-AUC (Precision-Recall Area Under Curve) - PRIMARY METRIC}
+\paragraph{F1-Score:} Used to find the optimal decision threshold by balancing Precision and Recall.
 
+\subsection{Probability Calibration}
+After hyperparameter optimization, we apply probability calibration to ensure that the fraud probabilities returned by XGBoost are reliable and well-calibrated. For example, if the model predicts 80\% fraud probability for 100 transactions, approximately 80 of those should actually be fraudulent. Tree-based models like XGBoost tend to produce over-confident predictions that don't reflect true uncertainty.  We use \texttt{CalibratedClassifierCV} with the sigmoid method, also known as Platt Scaling, which fits a logistic regression model to map uncalibrated probabilities to calibrated ones:
+
+$$P_{calibrated} = \frac{1}{1 + e^{-(A \cdot f(x) + B)}}$$
+
+where $f(x)$ is the uncalibrated probability from XGBoost, and $A, B$ are parameters learned from validation data.
+
+We obtained an optimal threshold (0.38 in our case) so that probabilities can be directly used for cost-sensitive decisions.
+
+\subsection{MLflow Experiment Tracking}
+
+MLflow serves as the central experiment tracking platform throughout the entire model development lifecycle. Every Optuna trial is automatically logged as a nested run within MLflow, capturing hyperparameters, cross-validation metrics (PR-AUC mean/std, ROC-AUC mean/std), and associated metadata. This comprehensive logging enables full reproducibility and facilitates comparison across all 50+ optimization trials.
+
+\textbf{Key Capabilities}:
 \begin{itemize}
-    \item Specifically designed for imbalanced datasets
-    \item Focuses on the minority class (frauds)
-    \item More informative than ROC-AUC when positive class is rare
-    \item A model predicting everything as legitimate gets PR-AUC $\approx$ 0.0017
+    \item \textbf{Experiment Versioning}: Each training run is uniquely identified and versioned
+    \item \textbf{Parameter Tracking}: All hyperparameters are logged automatically via Optuna integration
+    \item \textbf{Metric Comparison}: Interactive UI allows visual comparison of PR-AUC, ROC-AUC, F1-score across trials
+    \item \textbf{Artifact Storage}: Model binaries, confusion matrices, feature importance plots, and SHAP summaries are stored with each run
+    \item \textbf{Model Registry}: Best models are tagged for easy retrieval and deployment
 \end{itemize}
 
-\textbf{Interpretation}:
-\begin{itemize}
-    \item 0.0017 = Random baseline (fraud prevalence)
-    \item 0.50 = Decent model
-    \item 0.85+ = Excellent model for this problem
-\end{itemize}
+\textbf{Access}: The MLflow UI can be accessed locally by running:
+\begin{lstlisting}[language=bash]
+python -m mlflow ui --port 5000
+# Open http://localhost:5000 in browser
+\end{lstlisting}
 
-\textbf{2. ROC-AUC - SECONDARY METRIC}
-
-Used as a secondary metric for comparison, but can be optimistic on imbalanced data.
-
-\subsubsection{Threshold-Dependent Metrics}
-
-After finding the best hyperparameters with PR-AUC, we select an optimal decision threshold by maximizing F1-score:
-
-\begin{itemize}
-    \item \textbf{F1-Score}: Harmonic mean of precision and recall
-    $$F1 = 2 \times \frac{Precision \times Recall}{Precision + Recall}$$
-    
-    \item \textbf{Precision}: ``Of predicted frauds, how many are real?''
-    $$Precision = \frac{TP}{TP + FP}$$
-    
-    \item \textbf{Recall (Sensitivity)}: ``Of all real frauds, how many do we catch?''
-    $$Recall = \frac{TP}{TP + FN}$$
-    
-    \item \textbf{Confusion Matrix}: Shows TP, TN, FP, FN for detailed error analysis
-\end{itemize}
-
-\subsection{Handling Class Imbalance}
-
-We employ a \textbf{multi-layer strategy} instead of using SMOTE:
-
-\begin{enumerate}
-    \item \textbf{Scale\_pos\_weight (XGBoost native method)}
-    \begin{lstlisting}[language=Python]
-scale_pos_weight = (y == 0).sum() / (y == 1).sum()  # ≈ 577
-params["scale_pos_weight"] = scale_pos_weight
-    \end{lstlisting}
-    XGBoost penalizes errors on frauds 577$\times$ more than on legitimate transactions.
-    
-    \item \textbf{Stratified splitting}: Each train/val/test set and each CV fold maintains the 0.17\% fraud rate.
-    
-    \item \textbf{PR-AUC optimization}: The metric itself is designed for imbalanced data, guiding Optuna toward fraud-detecting solutions.
-    
-    \item \textbf{Attention Mechanism (TabNet)}: TabNet's self-attention learns which features matter for fraud detection without explicit class weights.
-\end{enumerate}
-
-\textbf{Why not SMOTE?}
-\begin{itemize}
-    \item We have 492 real fraud examples, sufficient for training
-    \item XGBoost's scale\_pos\_weight is the recommended approach
-    \item SMOTE can introduce synthetic noise and overfitting
-    \item Our approach is faster and more interpretable
-\end{itemize}
-
-\section{Testing Logic}
-
-\subsection{Testing Philosophy}
-
-We implemented a comprehensive testing strategy covering:
-\begin{enumerate}
-    \item \textbf{Unit Tests}: Individual components (preprocessing, inference)
-    \item \textbf{Integration Tests}: API endpoints and workflows
-    \item \textbf{CI/CD Automation}: Tests run automatically on every push via GitHub Actions
-\end{enumerate}
-
-\textbf{Testing framework}: pytest with coverage reporting
-
-\subsection{Test Coverage}
-
-\subsubsection{Test Suite 1: Data Preprocessing}
-
-\texttt{tests/test\_preprocessing.py}
-
-\textbf{Tests implemented}:
-\begin{itemize}
-    \item \texttt{test\_load\_data()}: Verifies dataset loads correctly
-    \item \texttt{test\_validate\_data()}: Checks validation detects missing columns
-    \item \texttt{test\_prepare\_features()}: Ensures Time and Amount are scaled appropriately
-    \item \texttt{test\_split\_data()}: Verifies stratified split maintains fraud percentage
-    \item \texttt{test\_preprocess\_pipeline()}: End-to-end pipeline test
-\end{itemize}
-
-\subsubsection{Test Suite 2: Model Inference}
-
-\texttt{tests/test\_inference.py}
-
-\textbf{Tests implemented}:
-\begin{itemize}
-    \item \texttt{test\_load\_model()}: Ensures saved model can be loaded
-    \item \texttt{test\_predict\_single\_transaction()}: Verifies single transaction prediction
-    \item \texttt{test\_predict\_batch()}: Verifies batch prediction
-    \item \texttt{test\_calibrated\_probabilities()}: Ensures probabilities are between 0 and 1
-    \item \texttt{test\_threshold\_application()}: Checks classification with optimal threshold
-\end{itemize}
-
-\subsubsection{Test Suite 3: API Integration}
-
-\texttt{tests/test\_api.py}
-
-\textbf{Tests implemented}:
-\begin{itemize}
-    \item \texttt{test\_root\_endpoint()}: \texttt{GET /} returns API info
-    \item \texttt{test\_health\_check()}: \texttt{GET /health} returns 200 with status
-    \item \texttt{test\_predict\_endpoint\_valid()}: \texttt{POST /predict} with valid transaction
-    \item \texttt{test\_predict\_endpoint\_invalid()}: \texttt{POST /predict} with missing features returns 422
-    \item \texttt{test\_metrics\_endpoint()}: \texttt{GET /metrics} returns Prometheus format
-\end{itemize}
-
-\section{CI/CD Pipelines with GitHub Actions}
-
-\subsection{Overview}
-
-The project uses \textbf{two GitHub Actions workflows} for different purposes:
-
-\begin{enumerate}
-    \item \texttt{train.yml} - Model training and HPO
-    \item \texttt{cicd.yml} - Continuous Integration and Deployment
-\end{enumerate}
-
-\subsection{Workflow 1: Model Training (\texttt{train.yml})}
-
-\textbf{Purpose}: Train or retrain the fraud detection model with hyperparameter optimization.
-
-\textbf{Trigger}:
-\begin{itemize}
-    \item \textbf{Manual}: Via \texttt{workflow\_dispatch} (button in GitHub UI)
-    \item \textbf{Scheduled}: Weekly on Sundays at midnight (cron: \texttt{0 0 * * 0})
-\end{itemize}
-
-\textbf{Parameters}:
-\begin{itemize}
-    \item \texttt{n\_trials}: Number of Optuna trials (default: 50, configurable)
-\end{itemize}
-
-\textbf{Steps}:
-\begin{enumerate}
-    \item Download Credit Card Fraud dataset from Kaggle
-    \item Preprocess data (scaling, splitting)
-    \item Train XGBoost model with Optuna HPO
-    \item Log experiments to MLFlow
-    \item Upload model artifacts
-    \item Clean up temporary files
-\end{enumerate}
-
-\textbf{Note}: This workflow trains only XGBoost, not TabNet. TabNet is trained separately and manually due to its significantly longer training time and experimental nature.
-
-\textbf{Important Notes}:
-
-\textit{Kaggle Authentication}:
-\begin{itemize}
-    \item Dataset download \textbf{requires Kaggle credentials}
-    \item Credentials are stored as GitHub Secrets:
-    \begin{itemize}
-        \item \texttt{KAGGLE\_USERNAME}
-        \item \texttt{KAGGLE\_KEY}
-    \end{itemize}
-    \item The workflow creates \texttt{\textasciitilde/.kaggle/kaggle.json} at runtime
-    \item Without credentials, the workflow will fail at the download step
-\end{itemize}
-
-\textit{Why only XGBoost, not TabNet?}:
-\begin{itemize}
-    \item XGBoost is the \textbf{primary production model}
-    \item TabNet training takes significantly longer (deep learning)
-    \item TabNet is trained \textbf{separately and manually} when needed
-    \item Keeps the automated workflow fast and focused
-    \item TabNet remains available as an experimental alternative
-\end{itemize}
-
-\textbf{Why not triggered on push?}
-\begin{itemize}
-    \item Training is computationally expensive (50+ Optuna trials)
-    \item Takes 30-60 minutes to complete (for XGBoost alone; TabNet would take hours)
-    \item Not needed for every code change
-    \item Manual/scheduled execution is more appropriate
-\end{itemize}
-
-\subsection{Workflow 2: CI/CD Pipeline (\texttt{cicd.yml})}
-
-\textbf{Purpose}: Automated testing, building, and deployment of the application.
-
-\textbf{Trigger}:
-\begin{itemize}
-    \item \textbf{Automatic}: Every push to \texttt{main} or \texttt{master}
-    \item \textbf{Pull Requests}: To \texttt{main} or \texttt{master}
-    \item \textbf{Manual}: Via \texttt{workflow\_dispatch}
-\end{itemize}
-
-\textbf{Three Sequential Jobs}:
-
-\subsubsection{Job 1: Build and Test}
-
-Validates code quality before deployment.
-
-\textbf{Steps}:
-\begin{enumerate}
-    \item Checkout code
-    \item Setup Python 3.10
-    \item Install \texttt{uv} (fast Python package installer)
-    \item Install dependencies (\texttt{make install})
-    \item Format code (\texttt{make format})
-    \item Lint code (\texttt{make lint})
-    \item Run tests (\texttt{make test})
-\end{enumerate}
-
-\textbf{Success criteria}: All tests must pass (pytest exit code 0)
-
-\subsubsection{Job 2: Build and Push Docker Image}
-
-Builds production Docker image and deploys to Docker Hub.
-
-\textbf{Runs only if}: Job 1 (Build and Test) succeeds
-
-\textbf{Steps}:
-\begin{enumerate}
-    \item Free disk space (remove unused tools)
-    \item Setup Docker Buildx (multi-platform builds)
-    \item Login to Docker Hub
-    \item Build Docker image from \texttt{docker/Dockerfile}
-    \item Push to Docker Hub: \texttt{ainhoupna/mlops\_final\_project:latest}
-    \item Use build cache for faster builds
-    \item Trigger Render deployment via webhook
-\end{enumerate}
-
-\subsubsection{Job 3: Deploy to Hugging Face Spaces}
-
-Deploys Gradio interface to Hugging Face.
-
-\textbf{Runs only if}: Job 2 (Docker Build) succeeds
-
-\textbf{Steps}:
-\begin{enumerate}
-    \item Checkout code with full Git history
-    \item Create orphan branch (clean history without large binaries)
-    \item Remove binary files (models, PDFs, reports)
-    \item Commit and force push to Hugging Face Space repository
-\end{enumerate}
-
-\textbf{Why orphan branch?}
-
-The orphan branch strategy creates a clean Git history without carrying over large binary files from the main repository. The workflow explicitly removes unnecessary files such as model binaries, PDFs, and report figures before deployment. Since the Gradio application loads the trained model dynamically from the API endpoint, there is no need to include model files in the Hugging Face Space repository. This approach keeps the deployment lightweight, fast, and focused solely on the application code.
-
-\subsection{Workflow Comparison}
-
-\begin{table}[H]
+\begin{figure}[H]
 \centering
-\small
-\begin{tabular}{@{}llll@{}}
-\toprule
-\textbf{Aspect} & \textbf{train.yml} & \textbf{cicd.yml} \\ \midrule
-\textbf{Purpose} & Model training \& HPO & Testing \& Deployment \\
-\textbf{Trigger} & Manual or weekly & Every push \\
-\textbf{Duration} & 30-60 minutes & 10-15 minutes \\
-\textbf{Frequency} & Low (weekly) & High (every push) \\
-\textbf{Resource Usage} & Heavy (HPO) & Light (tests only) \\
-\textbf{Outputs} & MLFlow experiments & Docker image + deployments \\
-\bottomrule
-\end{tabular}
-\caption{Comparison of GitHub Actions workflows}
-\end{table}
+% TODO: Replace with MLflow UI screenshot
+% File: screenshots/mlflow_experiments_list.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
+\textit{Screenshot: MLflow Experiments Dashboard}\\
+\textit{Showing experiment runs with hyperparameters, PR-AUC, ROC-AUC metrics}\\
+\textit{for all Optuna trials. Best run tagged for deployment.}
+\vspace{4cm}}}
+\caption{MLflow UI - Experiment tracking with Optuna optimization runs}
+\label{fig:mlflow_ui}
+\end{figure}
 
-\subsection{Deployment Flow Diagram}
-
-\begin{verbatim}
-Push to main
-    ↓
-┌───────────────────────────────────────┐
-│  Job 1: Build & Test (5 min)         │
-│  - Run pytest                         │
-│  - Check code quality                 │
-└───────────────────────────────────────┘
-    ↓ (if success)
-┌───────────────────────────────────────┐
-│  Job 2: Docker Build (10 min)        │
-│  - Build image                        │
-│  - Push to Docker Hub                 │
-│  - Trigger Render webhook             │
-└───────────────────────────────────────┘
-    ↓ (if success)
-┌───────────────────────────────────────┐
-│  Job 3: HuggingFace Deploy (2 min)   │
-│  - Push updated Gradio app            │
-└───────────────────────────────────────┘
-\end{verbatim}
-
-\section{Design Decisions}
-
-\subsection{Model Selection}
-
-\subsubsection{Primary Model: XGBoost}
-
-XGBoost (Extreme Gradient Boosting) was selected as the primary production model for several compelling reasons. As the industry standard algorithm for fraud detection on tabular data, XGBoost has proven its effectiveness in countless real-world applications and consistently dominates Kaggle competitions involving structured datasets. 
-
-The algorithm's native \texttt{scale\_pos\_weight} parameter makes it particularly well-suited for handling the extreme class imbalance present in our fraud detection problem, where fraudulent transactions represent only 0.17\% of the dataset. This built-in capability eliminates the need for synthetic data generation techniques like SMOTE, which can introduce noise and overfitting.
-
-From an interpretability standpoint, XGBoost provides excellent explainability through feature importance metrics and SHAP (SHapley Additive exPlanations) values. This transparency is crucial in fraud detection systems where understanding why a transaction was flagged as fraudulent is essential for both compliance and building trust with stakeholders.
-
-Performance-wise, XGBoost offers remarkable speed in both training and inference, making it ideal for production environments where low-latency predictions are required. Additionally, its excellent MLOps compatibility—being easy to serialize, version, and deploy—makes it a natural fit for our automated CI/CD pipeline and containerized deployment architecture.
-
-\subsubsection{Secondary Model: TabNet (Extra)}
-
-TabNet was implemented as a secondary experimental model to demonstrate deep learning capabilities and provide an alternative approach to the fraud detection problem. Unlike traditional neural networks, TabNet is specifically designed for tabular data and incorporates an attention mechanism that automatically learns feature importance during training.
-
-This attention-based architecture offers interpretability that is rare among deep learning models. The attention masks generated during inference reveal which features were used for each prediction, providing insights into the model's decision-making process. While TabNet shows promise as a deep learning alternative, its significantly longer training time compared to XGBoost makes it less suitable for the automated weekly training workflow. Therefore, TabNet experiments are conducted manually when exploring alternative modeling approaches.
-
-\subsection{Hyperparameter Optimization: Optuna}
-
-Optuna was chosen as the hyperparameter optimization framework due to its intelligent search strategy and seamless integration with our MLOps stack. Unlike naive approaches such as grid search or pure random search, Optuna employs the Tree-structured Parzen Estimator (TPE) algorithm, which learns from previous trials to intelligently suggest promising hyperparameter combinations.
-
-One of Optuna's most valuable features is automatic pruning, which stops unpromising trials early in the training process. This capability significantly reduces computational waste, particularly important when running expensive cross-validation loops across multiple hyperparameter configurations. With 50+ trials in our typical optimization runs, this pruning mechanism can save hours of computation time.
-
-The framework's native integration with MLFlow ensures that every trial—including its hyperparameters, metrics, and artifacts—is automatically logged and versioned. This comprehensive tracking provides full reproducibility and enables detailed analysis of the optimization process. Additionally, Optuna's support for parallel trial execution allows us to leverage multiple CPU cores, and its built-in visualization tools help analyze the optimization history and understand parameter importance.
-
-The combination of intelligent search, computational efficiency, and excellent observability makes Optuna the ideal choice for systematic hyperparameter tuning in our production ML pipeline.
-
-\subsection{MLOps Stack}
-
-\begin{table}[H]
+\begin{figure}[H]
 \centering
-\begin{tabular}{@{}lll@{}}
-\toprule
-\textbf{Component} & \textbf{Technology} & \textbf{Justification} \\ \midrule
-Tracking & MLFlow & Open source, excellent UI \\
-API & FastAPI & Fast, async, auto-docs \\
-Monitoring & Prometheus + Grafana & Industry standard \\
-Demo UI & Gradio on HF Spaces & Rapid prototyping, free \\
-Containerization & Docker + Compose & Reproducibility \\
-CI/CD & GitHub Actions & Native integration, free \\
-Orchestration & Airflow (extra) & Capability demonstration \\ \bottomrule
-\end{tabular}
-\caption{Project technology stack}
-\end{table}
-
+% TODO: Replace with MLflow run details screenshot
+% File: screenshots/mlflow_run_artifacts.png
+\fbox{\parbox{0.85\textwidth}{\centering\vspace{3.5cm}
+\textit{Screenshot: MLflow Run Details}\\
+\textit{Showing logged artifacts: confusion matrix, feature importance,}\\
+\textit{SHAP values, and model binary for a specific run}
+\vspace{3.5cm}}}
+\caption{MLflow - Run artifacts including visualizations and model files}
+\label{fig:mlflow_artifacts}
+\end{figure}
 \section{Performance Analysis}
 
 \subsection{Model Results}
@@ -661,282 +251,168 @@ Orchestration & Airflow (extra) & Capability demonstration \\ \bottomrule
 \caption{Impact of different classification thresholds (*optimal)}
 \end{table}
 
-\section{Monitoring Implementation}
+\section{Monitoring and Drift Detection}
+Machine learning models can degrade over time due to changes in the data distribution or the relationship between features and outcomes. We implement monitoring for both types of drift to ensure model reliability in production. 
 
-\subsection{Monitoring Architecture}
+\begin{description}
+    \item[\textbf{Data Drift (Covariate Shift)}:] 
+    Changes in the distribution of input features $P(X)$ while the relationship between features and target $P(Y|X)$ remains stable. \\
+    \textit{Example}: V14 feature shifts from mean=0 to mean=2.5 due to changing transaction patterns, but the same feature values still predict fraud with the same accuracy.
 
-We implemented a complete observability stack using \textbf{Prometheus} and \textbf{Grafana} to monitor the fraud detection API in real-time.
+    \item[\textbf{Concept Drift}:] 
+    Changes in the relationship between features and target $P(Y|X)$, meaning the same input features now lead to different outcomes. \\
+    \textit{Example}: Fraudsters adapt their strategies—transactions that previously indicated fraud (e.g., high amounts at night) are now normal behavior, and vice versa.
+\end{description}
 
-\subsubsection{How the Monitoring Flow Works}
 
-\begin{verbatim}
-1. FastAPI API          2. Prometheus        3. Grafana
-   (/metrics endpoint)     (scraper + TSDB)     (visualization)
-   
-   Exposes metrics  →  Scrapes every 10s  →  Queries & displays
-   in Prom format       Stores in TSDB       Real-time dashboards
-\end{verbatim}
+\subsubsection{Data Drift Detection: KS-Test on Top Features}
 
-\textbf{Detailed Flow}:
-
-\textbf{Step 1: FastAPI Exposes Metrics}
-
-Every prediction request to the API automatically records metrics using the \texttt{prometheus\_client} library:
-
-\begin{lstlisting}[language=Python]
-# In src/api/main.py
-start_time = time.time()
-
-# Make prediction
-prediction, probability = detector.predict(features)
-
-# Calculate latency
-latency = time.time() - start_time
-
-# Record metrics
-metrics_collector.record_prediction(
-    prediction=prediction,    # 0 or 1
-    probability=probability,  # 0.0 to 1.0
-    latency=latency          # in seconds
-)
-\end{lstlisting}
-
-These metrics are exposed at \texttt{GET /metrics} in Prometheus format.
-
-\textbf{Step 2: Prometheus Scrapes and Stores}
-
-Prometheus is configured to scrape the API every 10 seconds:
-
+We detect data drift using the Kolmogorov-Smirnov (KS) test, a non-parametric statistical test that compares two probability distributions. Based on XGBoost feature importance analysis, we monitor the top 3 most important features according the XGBoost model performance : V14 (28.41\%), V4 (15.23\%), and V12 (9.32\%). These features account for over 52\% of model decisions. Changes in their distributions have the highest impact on model performance, making them ideal early-warning indicators. 
+\\
+\\
+Every 10 seconds, Prometheus scrapes the \texttt{/metrics} endpoint to facilitate real-time analysis. During this process, we compute a KS statistic for each feature by comparing the production data against reference distributions derived from the original training set, where PCA components are assumed to be $N(0,1)$. The final drift score is then calculated as the average of these three individual KS statistics. Interpretation:
 \begin{itemize}
-    \item Sends \texttt{GET http://fraud-api:8000/metrics}
-    \item Parses the Prometheus exposition format
-    \item Stores timestamped values in its Time Series Database (TSDB)
-    \item Enables querying with PromQL (Prometheus Query Language)
+    \item 0.0 - 0.1: No significant drift (distributions are similar)
+    \item 0.1 - 0.2: Moderate drift (monitor closely, investigate cause)
+    \item $ >$ 0.2: Significant drift (consider model retraining)
 \end{itemize}
 
-\textbf{Step 3: Grafana Visualizes}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{prometheus_with_data_drift_score.png}
+    \caption{Prometheus graph with data drift score}
+    \label{fig:placeholder}
+\end{figure}
 
-Grafana connects to Prometheus as a data source and executes PromQL queries to create real-time dashboards with graphs and panels.
+\subsubsection{Concept Drift Detection: Prediction Distribution Monitoring}
 
-\subsection{Metrics Collected}
-
-We track three types of metrics:
-
-\subsubsection{Counters (Monotonically Increasing)}
-
+We detect concept drift by monitoring shifts in the prediction distribution. If the model starts predicting significantly different fraud rates than expected, it indicates the relationship between features and fraud has changed.
+To implement this, the system maintains a buffer of the last 1000 predictions (classified as 0 or 1) and calculates the recent fraud prediction rate by dividing the number of fraud instances by total predictions. This recent rate is compared against the baseline rate of 0.17\% established during the training phase. The absolute deviation between them is normalized to a 0–1 scale, where the final drift score is defined as $\min(1.0, \text{deviation} / 0.01)$. Interpretation:
 \begin{itemize}
-    \item \texttt{fraud\_detection\_predictions\_total\{prediction\_label="fraud"\}}: Total fraud predictions
-    \item \texttt{fraud\_detection\_predictions\_total\{prediction\_label="legitimate"\}}: Total legitimate predictions
+    \item If model predicts 5\% frauds (vs. 0.17\% baseline) → High concept drift
+    \item Indicates model behavior has changed significantly
+    \item May signal model degradation or adversarial adaptation
+    \item Triggers investigation and potential retraining
 \end{itemize}
 
-\subsubsection{Gauges (Can Increase or Decrease)}
+Without ground truth labels in real-time, we cannot directly measure model accuracy. However, significant shifts in prediction distribution serve as a proxy indicator that the underlying data-fraud relationship may have changed.
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{cd_df_prometheus.png}
+    \caption{Prometheus graphs with data and concept drift}
+    \label{fig:placeholder}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\linewidth]{grafana.png}
+    \caption{Grafana Dashboard for Real-time Monitoring}
+\end{figure}
+
+\section{Testing and Quality Assurance}
+We implement a \texttt{pytest} framework with coverage reporting:
 \begin{itemize}
-    \item \texttt{last\_prediction\_probability}: Fraud probability of last prediction (0.0-1.0)
-    \item \texttt{last\_prediction\_label}: Label of last prediction (0 or 1)
-    \item \texttt{data\_drift\_score}: Simulated data drift score (0-1)
-    \item \texttt{concept\_drift\_score}: Simulated concept drift score (0-1)
+    \item \textbf{Unit Tests}: Validating \texttt{preprocessing.py} (loading, scaling, splitting).
+    \item \textbf{Inference Tests}: Ensuring model loading and threshold application in \texttt{test\_inference.py}.
+    \item \textbf{API Tests}: Checking FastAPI endpoints and Prometheus metrics in \texttt{test\_api.py}.
 \end{itemize}
 
-\subsubsection{Histograms (Distribution of Values)}
-
-\begin{itemize}
-    \item \texttt{prediction\_latency\_seconds}: Distribution of prediction latencies
-    \item Buckets: [0.001s, 0.005s, 0.01s, 0.025s, 0.05s, 0.1s, 0.25s, 0.5s, 1.0s]
-\end{itemize}
-
-\subsection{Generating Monitoring Data}
-
-For demonstration and screenshots, we use a traffic generation script (\texttt{generate\_traffic.sh}) that sends 200 simulated transactions:
-
-\begin{itemize}
-    \item \textbf{180 legitimate transactions} (90\%): Representative of normal credit card usage
-    \item \textbf{20 fraudulent transactions} (10\%): Higher than real-world rate for visibility in dashboards
-\end{itemize}
-
-\textbf{Example transaction data}:
-\begin{lstlisting}[language=bash]
-# Legitimate transaction
-curl -X POST http://localhost:8000/predict \
-  -d '{"Time":0, "V1":-1.36, ..., "Amount":149.62}'
-
-# Fraudulent transaction
-curl -X POST http://localhost:8000/predict \
-  -d '{"Time":406, "V1":-2.31, ..., "Amount":0.89}'
-\end{lstlisting}
-
-This generates realistic metrics:
-\begin{itemize}
-    \item \textbf{Prediction rate}: ~20 requests/second
-    \item \textbf{Fraud detection rate}: ~10\%
-    \item \textbf{API latency (p95)}: ~6-8 milliseconds
-\end{itemize}
-
-\subsection{Grafana Dashboard Panels}
-
-The Grafana dashboard (\texttt{http://localhost:3000}) displays four key panels:
-
-\textbf{Panel 1: Prediction Volume}
-\begin{verbatim}
-Query: rate(fraud_detection_predictions_total[5m])
-Visualization: Time series graph showing predictions per second
-\end{verbatim}
-
-\textbf{Panel 2: Fraud Detection Rate}
-\begin{verbatim}
-Query: sum(rate(fraud_detection_predictions_total
-         {prediction_label="fraud"}[5m])) / 
-       sum(rate(fraud_detection_predictions_total[5m]))
-Visualization: Stat panel showing percentage of frauds detected
-\end{verbatim}
-
-\textbf{Panel 3: API Latency (95th Percentile)}
-\begin{verbatim}
-Query: histogram_quantile(0.95, 
-         rate(prediction_latency_seconds_bucket[5m]))
-Visualization: Time series graph showing p95 latency in milliseconds
-\end{verbatim}
-
-\textbf{Panel 4: Data Drift Score}
-\begin{verbatim}
-Query: data_drift_score
-Visualization: Time series graph of simulated drift metrics
-\end{verbatim}
-
-\subsection{Monitoring Screenshots}
-
-\subsubsection{Hugging Face Space}
-
-The Gradio interface deployed on Hugging Face Spaces allows users to interactively test the fraud detection model with all 30 features.
+\section{Production Infrastructure and CI/CD}
+\subsection{API Architecture}
+The fraud detection system uses a FastAPI-based interface. The \texttt{/} root endpoint provides an HTML landing page that provides general API information and quick links to the technical documentation, while the \texttt{/health} endpoint allows for verification that the XGBoost model is loaded and using the correct classification threshold. The core functionality resides in the \texttt{/predict} endpoint, which accepts JSON payloads containing 30 transaction features to return fraud probabilities and latency data.
 
 \begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot after deployment
-% File: screenshots/01_huggingface_space.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: Hugging Face Gradio Interface}\\
-\textit{Showing prediction with all V1-V28 inputs}
-\vspace{3cm}}}
-\caption{Hugging Face Space - Gradio interface with fraud prediction example}
-\label{fig:huggingface}
+    \centering
+    \includegraphics[width=0.75\linewidth]{fast_API_completa.png}
+    \caption{FastAPI HTML root}
+    \label{fig:placeholder}
 \end{figure}
 
-\subsubsection{Render Deployment}
-
-The API is deployed on Render with automatic CI/CD integration from GitHub.
+To maintain system observability, the \texttt{/metrics} endpoint exposes real-time data in Prometheus format, covering prediction counts, latency histograms, and critical drift scores. Additionally, a \texttt{/retrain} webhook is implemented to trigger automated model updates when drift is detected. For developer ease of use, interactive documentation is automatically hosted via Swagger UI (\texttt{/docs}) and ReDoc.
 
 \begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/02_render_services.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{2cm}
-\textit{Screenshot: Render Dashboard}\\
-\textit{Showing deployed service status}
-\vspace{2cm}}}
-\caption{Render - Service deployment dashboard}
-\label{fig:render_dashboard}
+    \centering
+    \includegraphics[width=0.5\linewidth]{docs.png}
+    \caption{API docs}
+    \label{fig:placeholder}
 \end{figure}
 
-\subsubsection{API Documentation (Swagger)}
 
-FastAPI automatically generates interactive API documentation.
+\subsection{CI/CD Pipelines (GitHub Actions)}
+\begin{enumerate}
+    \item \textbf{train.yml}: Scheduled (weekly) or manual HPO and training.
+    \item \textbf{cicd.yml}: Triggered on every push. It runs tests, builds the \textbf{Docker} image, pushes to Docker Hub, and triggers deployment on \textbf{Render} and \textbf{Hugging Face}.
+\end{enumerate}
+
+\section{CI/CD Pipelines with GitHub Actions}
+
+\subsection{Overview}
+
+The project uses two GitHub Actions workflows for different purposes:
+
+\begin{enumerate}
+    \item \texttt{train.yml} - Model training and HPO.
+    \item \texttt{cicd.yml} - Continuous Integration and Deployment.
+\end{enumerate}
 
 \begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/07_api_swagger_ui.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: Swagger UI}\\
-\textit{Showing all API endpoints and schemas}
-\vspace{3cm}}}
-\caption{FastAPI Swagger UI - Interactive API documentation}
-\label{fig:swagger}
+    \centering
+    \includegraphics[width=0.75\linewidth]{Both_workflows.png}
+    \caption{Train and CICD woorkflows runnin on github}
+    \label{fig:placeholder}
 \end{figure}
 
-\subsubsection{Prometheus Monitoring}
+\subsection{Workflow 1: Model Training (\texttt{train.yml})}
 
-Prometheus scrapes metrics from the API every 10 seconds for real-time monitoring.
+The \texttt{train.yml} workflow is designed to manage the end-to-end training and retraining of the fraud detection model using hyperparameter optimization. To replicate a real-world production scenario, we use this workflow to simulate a continuous data stream; although we rely on the Kaggle dataset (Dataset download requires Kaggle credentials that are stored as GitHub Secrets), the pipeline treats scheduled executions as if new transaction data had been collected. This ensures the model remains up-to-date with evolving fraud patterns.
+\\
+\\
+The process is automatically triggered every Sunday at midnight and supports manual execution via \texttt{workflow\_dispatch}. It includes a configurable \texttt{n\_trials} parameter, defaulting to 50 Optuna trials. During execution, the workflow downloads the raw data, applies the preprocessing and scaling logic, performs the TPE-based hyperparameter search, and finally logs the resulting model and artifacts to MLFlow for versioning and deployment.
+\\
+\\
+\textbf{Notes}:  This workflow is not triggered on push because the training is computationally expensive (50+ Optuna trials) and takes almost an hour to compete, so it is not needed for every code change. Manual/scheduled execution is more appropriate. Also, the workflow trains only XGBoost, as TabNet is trained separately and manually due to its significantly longer training time and experimental nature. 
+
+
+\subsection{Workflow 2: CI/CD Pipeline (\texttt{cicd.yml})}
+
+This workflow is built for automated testing, building, and deployment of the application. It triggers automatically with every push to main or master or manually via workflow\_dispatch. It has three Sequential Jobs:
 
 \begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/10_prometheus_targets.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{2.5cm}
-\textit{Screenshot: Prometheus Targets}\\
-\textit{Showing fraud-api target as UP}
-\vspace{2.5cm}}}
-\caption{Prometheus Targets - API health monitoring}
-\label{fig:prometheus_targets}
+    \centering
+    \includegraphics[width=0.75\linewidth]{CICD.png}
+    \caption{CICD Workflow in Github}
+    \label{fig:placeholder}
 \end{figure}
 
-\begin{figure}[H]
+\subsubsection{Job 1: Build and Test}
+It ensures code quality by setting up a Python 3.10 environment and utilizing the \texttt{uv} installer for high-speed dependency management. This stage enforces strict standards through automated formatting, linting, and comprehensive \texttt{pytest} execution, requiring all tests to pass as a prerequisite for further steps.
+
+\subsubsection{Job 2: Build and Push Docker Image}
+It handles the production packaging. After clearing disk space and setting up Docker Buildx for multi-platform compatibility, the system builds the production image and pushes it to Docker Hub. This stage also triggers a webhook to automate the deployment on the Render cloud platform, utilizing build caches to minimize execution time.
+
+\subsubsection{Job 3: Deploy to Hugging Face Spaces}
+It deploys Gradio interface to Hugging Face. To maintain a lightweight repository, we implement an orphan branch strategy. The workflow creates a temporary, clean branch—invisible in the main repository—that excludes large binary files, models, and reports. Because the Gradio app dynamically interacts with the API, these heavy files are unnecessary, allowing for a fast and focused deployment that pushes only the essential application code to the Hugging Face Space.
+
+\subsection{Workflow Comparison}
+
+\begin{table}[H]
 \centering
-% TODO: Replace with actual screenshot
-% File: screenshots/11_prometheus_graph_predictions.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: Prometheus Graph}\\
-\textit{Showing fraud\_detection\_predictions\_total over time}
-\vspace{3cm}}}
-\caption{Prometheus - Prediction volume metrics over time}
-\label{fig:prometheus_graph}
-\end{figure}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Aspect} & \textbf{train.yml} & \textbf{cicd.yml} \\ \midrule
+\textbf{Purpose} & Model training \& HPO & Testing \& Deployment \\
+\textbf{Trigger} & Manual or weekly & Every push \\
+\textbf{Duration} & 30-60 minutes & 10-15 minutes \\
+\textbf{Frequency} & Low (weekly) & High (every push) \\
+\textbf{Resource Usage} & Heavy (HPO) & Light (tests only) \\
+\textbf{Outputs} & MLFlow experiments & Docker image + deployments \\
+\bottomrule
+\end{tabular}
+\caption{Comparison of GitHub Actions workflows}
+\end{table}
 
-\subsubsection{Grafana Dashboards}
-
-Grafana provides rich visualization of all monitoring metrics.
-
-\begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/15_grafana_dashboard.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{4cm}
-\textit{Screenshot: Grafana Dashboard}\\
-\textit{Showing: Prediction Rate, Fraud Detection Rate,}\\
-\textit{API Latency (p95), and Drift Metrics}
-\vspace{4cm}}}
-\caption{Grafana Dashboard - Complete monitoring overview with 4 panels}
-\label{fig:grafana}
-\end{figure}
-
-\subsubsection{MLFlow Experiment Tracking}
-
-MLFlow tracks all hyperparameter optimization trials and stores model artifacts.
-
-\begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/16_mlflow_experiments.png
-\fbox{\parbox{0.85\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: MLFlow Experiments List}\\
-\textit{Showing runs with PR-AUC, ROC-AUC, and parameters}
-\vspace{3cm}}}
-\caption{MLFlow - Experiments list showing Optuna optimization runs}
-\label{fig:mlflow_experiments}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/20_mlflow_confusion_matrix.png
-\fbox{\parbox{0.7\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: Confusion Matrix from MLFlow}\\
-\textit{Showing TP, TN, FP, FN on validation set}
-\vspace{3cm}}}
-\caption{MLFlow Artifacts - Confusion matrix from best model run}
-\label{fig:confusion_matrix}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-% TODO: Replace with actual screenshot
-% File: screenshots/21_mlflow_feature_importance.png
-\fbox{\parbox{0.7\textwidth}{\centering\vspace{3cm}
-\textit{Screenshot: Feature Importance from MLFlow}\\
-\textit{Showing top features by gain (V14, V4, V12, ...)}
-\vspace{3cm}}}
-\caption{MLFlow Artifacts - Feature importance plot}
-\label{fig:feature_importance}
-\end{figure}
 
 \section{Project Links}
 
@@ -948,12 +424,6 @@ MLFlow tracks all hyperparameter optimization trials and stores model artifacts.
 
 \textbf{URL}: \url{https://huggingface.co/spaces/ainhoupna/Credit_Fraud_Detection}
 
-\textbf{Features}:
-\begin{itemize}
-    \item Interactive demo with Gradio interface
-    \item Public access to test the model
-    \item Integration with FastAPI backend
-\end{itemize}
 
 \subsection{Docker Hub}
 
@@ -964,48 +434,23 @@ MLFlow tracks all hyperparameter optimization trials and stores model artifacts.
 \textbf{Kaggle}: \url{https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud}
 
 \section{Conclusions}
+\section{Conclusions}
 
-\subsection{Project Achievements}
+This project successfully demonstrates a complete, production-ready MLOps pipeline for credit card fraud detection, addressing a critical challenge in financial security where the extreme class imbalance (0.17\% fraud rate) demands specialized techniques and rigorous engineering practices.
 
-This project successfully delivers a \textbf{production-ready MLOps pipeline} for credit card fraud detection:
+The technical approach centers on XGBoost as the primary classification model, leveraging its native \texttt{scale\_pos\_weight} parameter to elegantly handle the 577:1 imbalance ratio without resorting to synthetic data generation. Through automated hyperparameter optimization with Optuna's Tree-structured Parzen Estimator algorithm, the model achieves a validation PR-AUC of 0.8603 and ROC-AUC of 0.9745, demonstrating strong discriminative power on the minority fraud class. Critically, the application of Platt Scaling calibration ensures that predicted probabilities are reliable and interpretable, enabling confident threshold-based decision making with the optimal operating point of 0.38 that balances precision (85.71\%) and recall (73.15\%).
 
-\begin{itemize}
-    \item[\checkmark] \textbf{Machine Learning Excellence}: XGBoost model with 0.86 PR-AUC on highly imbalanced data
-    \item[\checkmark] \textbf{Robust Validation}: Stratified 5-Fold CV prevents data leakage
-    \item[\checkmark] \textbf{Comprehensive Testing}: Unit and integration tests with CI/CD
-    \item[\checkmark] \textbf{Production Deployment}: FastAPI with latency <10ms
-    \item[\checkmark] \textbf{Advanced Features}: TabNet, Airflow, drift simulation
-\end{itemize}
+Beyond model performance, this work exemplifies modern MLOps best practices through comprehensive automation and observability. The integration of MLflow with Optuna provides full experiment traceability, logging all 50+ hyperparameter trials with their cross-validation metrics and artifacts. This reproducibility is essential for regulated financial environments where model decisions must be auditable. The CI/CD pipeline, orchestrated through GitHub Actions, automates testing, containerization via Docker, and deployment to both cloud infrastructure (Render) and demonstration platforms (Hugging Face Spaces), ensuring that code quality gates are enforced and deployments remain consistent across environments.
 
-\subsection{Key Technical Insights}
+Production monitoring represents a particularly robust aspect of the system. By exposing Prometheus metrics from the FastAPI endpoint and visualizing them through Grafana dashboards, the infrastructure enables real-time tracking of prediction volume, latency, and critically, data and concept drift. The drift detection mechanism monitors the top three most important features (V14, V4, V12, accounting for 52\% of model decisions) using Kolmogorov-Smirnov tests, while concept drift is tracked by comparing prediction distribution shifts against the baseline 0.17\% fraud rate. These automated alerts can trigger model retraining workflows before performance degradation becomes severe, a proactive approach essential for maintaining model reliability in dynamic adversarial environments where fraudsters continuously adapt their tactics.
 
-\begin{enumerate}
-    \item \textbf{Imbalanced data requires specialized approaches}: PR-AUC superior to ROC-AUC, scale\_pos\_weight beats SMOTE
-    
-    \item \textbf{Validation strategy is critical}: Stratified K-Fold ensures each fold has frauds
-    
-    \item \textbf{Threshold tuning impacts business results}: Optimal threshold (0.38) catches 73\% of frauds with minimal false alarms
-    
-    \item \textbf{MLOps is more than training a model}: Tracking, versioning, testing, deployment, and monitoring are equally important
-\end{enumerate}
+The techniques and tools employed throughout this project—XGBoost for robust classification, Optuna for intelligent optimization, MLflow for experiment tracking, FastAPI for low-latency serving, Prometheus and Grafana for monitoring, Docker for reproducible deployments, and GitHub Actions for automation—represent industry-standard practices utilized by leading technology companies such as Netflix, Uber, Airbnb, and Spotify in their production ML systems. This alignment with industry standards ensures that the methodologies and architectural patterns demonstrated here are directly transferable to real-world financial fraud detection deployments.
 
-\subsection{Real-World Applicability}
+In summary, this work delivers not merely a high-performing fraud detection model, but a complete, observable, and maintainable ML system that embodies the principles of reliability, reproducibility, and continuous improvement central to modern MLOps engineering. The combination of thoughtful algorithmic design, comprehensive automation, and proactive monitoring creates a foundation for deploying machine learning safely and effectively in high-stakes production environments.
 
-This project demonstrates skills directly applicable to ML engineering roles in industry:
+\subsection*{Future Work}
 
-\textbf{Skills demonstrated}:
-\begin{itemize}
-    \item End-to-end ML pipeline design
-    \item Production API development with FastAPI
-    \item Containerization and orchestration
-    \item CI/CD automation
-    \item Monitoring and observability
-    \item Imbalanced data handling
-    \item Model explainability (SHAP)
-    \item Experiment tracking and versioning
-\end{itemize}
-
-The techniques and tools used (XGBoost, Optuna, MLFlow, FastAPI, Prometheus, Docker, GitHub Actions) are \textbf{industry standards} used by companies like Netflix, Uber, Airbnb, and Spotify for production ML systems.
+While the current system demonstrates strong performance and robust engineering, several avenues for enhancement remain. TabNet's attention-based architecture could be further optimized for production use, potentially offering improved interpretability through its feature selection masks. Advanced drift detection techniques such as ADWIN (Adaptive Windowing) or Page-Hinkley tests could provide more sensitive and responsive alerts. Integration with automated retraining pipelines triggered by drift thresholds would close the feedback loop entirely, enabling truly autonomous model lifecycle management. Finally, A/B testing frameworks could be incorporated to safely validate model updates in production before full rollout, minimizing the risk of performance regressions.
 
 \section*{Appendices}
 
@@ -1056,7 +501,7 @@ cd docker && docker compose up -d
 \subsection*{C. Contact Information}
 
 \textbf{Author}: Ainhoa Pina\\
-\textbf{GitHub}: \url{https://github.com/ainhoupna}\\
+\textbf{GitHub}: \url{https://github.com/ainhoupna}\\s
 \textbf{Hugging Face}: \url{https://huggingface.co/ainhoupna}
 
 \vfill
@@ -1064,5 +509,8 @@ cd docker && docker compose up -d
 \textit{Report generated: January 3, 2026}\\
 \textit{Project duration: December 2024 - January 2026}\\
 \textit{Course: MLOps - Master in Data Science}
+
+\end{document}
+
 
 \end{document}

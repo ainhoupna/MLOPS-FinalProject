@@ -22,15 +22,29 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Initialize model
+# Initialize model and metrics
 detector = None
 
-# Monitoring Buffers & Reference
-# Buffer last 1000 transactions for drift calculation
-transaction_buffer = deque(maxlen=1000)
-# Reference data: PCA components V1-V28 are roughly N(0,1) in the original dataset
-# We'll use a fixed standard normal sample as reference for V1 drift
-REFERENCE_DATA_V1 = np.random.normal(0, 1, 1000).tolist()
+# Monitor top 3 most important features (based on XGBoost feature importance)
+MONITORED_FEATURES = ['V14', 'V4', 'V12']
+
+# Separate buffers for each monitored feature
+feature_buffers = {
+    'V14': deque(maxlen=1000),
+    'V4': deque(maxlen=1000),
+    'V12': deque(maxlen=1000)
+}
+
+# Reference data from training set (simulated with normal distribution N(0,1))
+REFERENCE_DATA = {
+    'V14': np.random.normal(0, 1, 1000).tolist(),
+    'V4': np.random.normal(0, 1, 1000).tolist(),
+    'V12': np.random.normal(0, 1, 1000).tolist()
+}
+
+# Track prediction distribution for concept drift detection
+prediction_buffer = deque(maxlen=1000)  # Store last 1000 predictions
+BASELINE_FRAUD_RATE = 0.0017  # Expected fraud rate from training data (0.17%)
 
 
 @app.on_event("startup")
@@ -192,8 +206,13 @@ async def predict(transaction: TransactionFeatures):
         features = transaction.dict()
         result = detector.predict(features)
 
-        # Buffer data for drift detection (use V1 as proxy for distribution)
-        transaction_buffer.append(transaction.V1)
+        # Buffer top 3 features for drift detection
+        feature_buffers['V14'].append(transaction.V14)
+        feature_buffers['V4'].append(transaction.V4)
+        feature_buffers['V12'].append(transaction.V12)
+        
+        # Buffer prediction for concept drift detection
+        prediction_buffer.append(result["prediction"])
 
         # Calculate latency
         latency = time.time() - start_time
@@ -223,17 +242,32 @@ async def get_metrics():
     Returns:
         Metrics in Prometheus exposition format
     """
-    # 1. Real Data Drift (KS-test on V1)
-    if len(transaction_buffer) >= 50: # Require minimum samples
-        data_drift = drift_detector.compute_drift(REFERENCE_DATA_V1, list(transaction_buffer))
+    # 1. Real Data Drift (KS-test on top 3 features: V14, V4, V12)
+    drift_scores = []
+    for feature in MONITORED_FEATURES:
+        if len(feature_buffers[feature]) >= 50:  # Require minimum samples
+            score = drift_detector.compute_drift(
+                REFERENCE_DATA[feature], 
+                list(feature_buffers[feature])
+            )
+            drift_scores.append(score)
+    
+    # Average drift across monitored features
+    data_drift = np.mean(drift_scores) if drift_scores else 0.0
+    
+    # 2. Concept Drift (Prediction Distribution Shift)
+    # Compare recent fraud prediction rate against baseline
+    if len(prediction_buffer) >= 100:  # Need minimum samples for reliable estimate
+        recent_fraud_rate = sum(prediction_buffer) / len(prediction_buffer)
+        
+        # Calculate deviation from baseline (expected 0.17% fraud rate)
+        rate_deviation = abs(recent_fraud_rate - BASELINE_FRAUD_RATE)
+        
+        # Normalize to 0-1 scale (deviation > 0.01 = significant shift)
+        # If prediction rate changes by >1%, it indicates concept drift
+        concept_drift = min(1.0, rate_deviation / 0.01)
     else:
-        data_drift = 0.0 # Not enough data yet
-
-    # 2. Simulated Concept Drift (Model degrading over time)
-    start_time = 1735038000  # Fixed reference point (Dec 24 2024)
-    current_time = time.time()
-    hours_passed = (current_time - start_time) / 3600
-    concept_drift = min(0.9, 0.05 + (hours_passed * 0.001) + random.uniform(0, 0.05))
+        concept_drift = 0.0  # Not enough predictions yet
     
     # 3. Simulated Fairness Issue
     fairness_val = fairness_monitor.simulate_fairness_issue()

@@ -24,6 +24,8 @@ wheels/
 venv/
 env/
 ENV/
+.venv/
+.venv_312/
 
 # IDEs
 .vscode/
@@ -49,6 +51,8 @@ data/processed/*
 # MLFlow
 mlruns/
 mlartifacts/
+artifacts/
+airflow/logs/
 
 # Environment variables
 .env
