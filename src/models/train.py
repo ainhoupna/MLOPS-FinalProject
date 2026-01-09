@@ -227,6 +227,50 @@ class FraudDetectionTrainer:
         plt.tight_layout()
         plt.savefig(save_path, dpi=150, bbox_inches="tight")
         plt.close()
+    def calibrate_model(
+        self,
+        model: xgb.XGBClassifier,
+        X_val: pd.DataFrame,
+        y_val: pd.Series
+    ) -> Tuple[CalibratedClassifierCV, np.ndarray]:
+        """
+        Calibrate the trained model using isotonic regression.
+        
+        Args:
+            model: Trained XGBoost model
+            X_val: Validation features
+            y_val: Validation labels
+            
+        Returns:
+            Tuple of (calibrated_model, predicted_probabilities)
+        """
+        print("Calibrating model probabilities...")
+        
+        try:
+            from sklearn.frozen import FrozenEstimator
+            # sklearn >= 1.6 recommended approach
+            estimator_to_calibrate = FrozenEstimator(model)
+            cv_param = None # cv is ignored when using FrozenEstimator
+        except ImportError:
+            # Fallback for older sklearn
+            estimator_to_calibrate = model
+            cv_param = "prefit"
+
+        # Use isotonic calibration (better for tree-based models than sigmoid)
+        calibrated_model = CalibratedClassifierCV(
+            estimator_to_calibrate, 
+            method="isotonic",
+            cv=cv_param,
+            ensemble=False
+        )
+        
+        # Fit calibration on validation set
+        calibrated_model.fit(X_val, y_val)
+        
+        # Use calibrated model for predictions
+        y_val_pred_proba = calibrated_model.predict_proba(X_val)[:, 1]
+        
+        return calibrated_model, y_val_pred_proba
 
     def train(
         self,
@@ -275,32 +319,8 @@ class FraudDetectionTrainer:
             best_model = xgb.XGBClassifier(**best_params)
             best_model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
 
-            # Calibrate model - use isotonic method which works better for tree models
-            print("Calibrating model probabilities...")
-            
-            try:
-                from sklearn.frozen import FrozenEstimator
-                # sklearn >= 1.6 recommended approach
-                estimator_to_calibrate = FrozenEstimator(best_model)
-                cv_param = None # cv is ignored when using FrozenEstimator
-            except ImportError:
-                # Fallback for older sklearn
-                estimator_to_calibrate = best_model
-                cv_param = "prefit"
-
-            # Use isotonic calibration (better for tree-based models than sigmoid)
-            calibrated_model = CalibratedClassifierCV(
-                estimator_to_calibrate, 
-                method="isotonic",
-                cv=cv_param,
-                ensemble=False
-            )
-            
-            # Fit calibration on validation set
-            calibrated_model.fit(X_val, y_val)
-            
-            # Use calibrated model for predictions
-            y_val_pred_proba = calibrated_model.predict_proba(X_val)[:, 1]
+            # Calibrate model
+            calibrated_model, y_val_pred_proba = self.calibrate_model(best_model, X_val, y_val)
 
             # Find optimal threshold
             optimal_threshold, best_f1 = self.find_optimal_threshold(

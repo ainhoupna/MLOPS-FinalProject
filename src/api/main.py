@@ -6,7 +6,6 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import Response, HTMLResponse
 from pydantic import BaseModel, Field
 import time
-import random
 import os
 import numpy as np
 from collections import deque
