@@ -2,7 +2,7 @@ groups:
   - name: fraud_detection_alerts
     rules:
       - alert: HighDataDrift
-        expr: data_drift_score > 0.3
+        expr: data_drift_score > 0.2
         for: 1m
         labels:
           severity: warning

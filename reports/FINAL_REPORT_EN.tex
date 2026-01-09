@@ -198,6 +198,26 @@ python -m mlflow ui --port 5000
     \item Recall: 0.7315 (73.15\% of real frauds detected)
 \end{itemize}
 
+\subsubsection{TabNet (Deep Learning) - Comparative Analysis}
+
+We experimented with TabNet, a deep learning architecture designed for tabular data, to compare its performance against the gradient boosting approach.
+
+\textbf{Best Run Metrics}:
+\begin{itemize}
+    \item \textbf{PR-AUC}: 0.7038
+\end{itemize}
+
+\textbf{Analysis of Underperformance}:
+TabNet significantly underperformed compared to XGBoost (PR-AUC 0.70 vs 0.86). We attribute this performance gap to several key factors:
+
+\begin{enumerate}
+    \item \textbf{Dataset Size}: Deep learning models like TabNet typically require very large datasets to generalize effectively. While our dataset has ~285k rows, the extreme class imbalance (only ~492 fraud cases) limits the effective signal available for training a complex neural network.
+    \item \textbf{Feature Nature (PCA)}: The dataset consists primarily of PCA-transformed features (V1-V28). Gradient Boosting Trees (XGBoost) are exceptionally effective at finding split points in numerical data, whereas TabNet's attention mechanism may struggle to extract further meaningful patterns from already compressed, orthogonal features without extensive raw feature engineering.
+    \item \textbf{Complexity vs. Data}: TabNet is a complex model with many hyperparameters (sparsity, steps, attention width). In contrast, XGBoost provides strong baselines with minimal tuning for tabular data. The "return on investment" for tuning TabNet on this specific dataset proved lower than simply refining the XGBoost ensemble.
+\end{enumerate}
+
+Consequently, \textbf{XGBoost was selected as the production model} due to its superior accuracy, faster training/inference speed, and interpretability on this specific dataset.
+
 \textbf{Confusion matrix on validation set (42,721 transactions)}:
 
 \begin{table}[H]
@@ -308,6 +328,45 @@ Without ground truth labels in real-time, we cannot directly measure model accur
     \centering
     \includegraphics[width=0.75\linewidth]{grafana.png}
     \caption{Grafana Dashboard for Real-time Monitoring}
+\end{figure}
+
+\subsection{Alerting Strategy}
+To ensure proactive incident response, we implemented an alerting system using \textbf{Prometheus AlertManager}. Alerts are triggered based on specific thresholds defined in the Prometheus configuration and routed through AlertManager for notification management.
+
+\textbf{Implemented Alerts}:
+\begin{itemize}
+    \item \textbf{High Latency Alert}: Triggered if the 95th percentile latency exceeds 200ms over a 5-minute window. This ensures the API meets the low-latency requirement for real-time fraud detection.
+    \item \textbf{Data Drift Alert}: Triggered if the combined KS-test drift score for the top features (V14, V4, V12) exceeds 0.2. This indicates a significant shift in input data distribution requiring investigation.
+    \item \textbf{Concept Drift Alert}: Triggered if the prediction distribution deviates by more than 50\% from the baseline fraud rate (0.17\%) over the last 1000 predictions. This suggests the model's decision boundary may no longer be valid.
+    \item \textbf{API Down Alert}: Triggered if the \texttt{up} metric for the API service is 0 for more than 1 minute.
+\end{itemize}
+
+The system is configured to route these critical alerts to a webhook receiver, enabling integration with external incident management tools.
+
+\begin{figure}[H]
+    \centering
+    % TODO: Replace with actual screenshot
+    % \includegraphics[width=0.9\linewidth]{screenshots/prometheus_alerts.png}
+    \fbox{\parbox{0.9\textwidth}{\centering\vspace{4cm}
+    \textit{Screenshot: Prometheus Alerts Page}\\
+    \textit{Showing 'HighDataDrift' alert in FIRING state}\\
+    \textit{and 'FairnessIssueDetected' in PENDING state}
+    \vspace{4cm}}}
+    \caption{Prometheus Alerts Dashboard showing active drift detection}
+    \label{fig:prom_alerts}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    % TODO: Replace with actual screenshot
+    % \includegraphics[width=0.9\linewidth]{screenshots/alertmanager_ui.png}
+    \fbox{\parbox{0.9\textwidth}{\centering\vspace{4cm}
+    \textit{Screenshot: AlertManager UI}\\
+    \textit{Showing the routed alert received from Prometheus}\\
+    \textit{ready for notification dispatch}
+    \vspace{4cm}}}
+    \caption{AlertManager UI displaying received critical alerts}
+    \label{fig:alertmanager}
 \end{figure}
 
 \section{Testing and Quality Assurance}
@@ -485,7 +544,22 @@ uvicorn src.api.main:app --reload --port 8000
 cd docker && docker compose up -d
 \end{lstlisting}
 
-\subsection*{B. Environment Specifications}
+\subsection*{B. Orchestration Experiments (Airflow)}
+
+We initially designed and implemented a comprehensive orchestration layer using Apache Airflow to manage the machine learning lifecycle. The design included Directed Acyclic Graphs (DAGs) for:
+\begin{itemize}
+    \item \textbf{Data Ingestion}: Automated downloading of new transaction data.
+    \item \textbf{Retraining}: Triggered model retraining upon drift detection.
+    \item \textbf{Evaluation}: Automated model validation before deployment.
+\end{itemize}
+
+\textbf{Implementation Status}:
+While the Airflow DAGs and docker-compose configuration were successfully implemented and tested in isolation, full integration into the production environment was not feasible due to hardware constraints. The Airflow scheduler and webserver, combined with the MLflow tracking server, API, and monitoring stack (Prometheus/Grafana), exceeded the available disk space and memory resources of the deployment environment (specifically, the 20GB disk limit on the VM).
+
+\textbf{Mitigation}:
+To adapt to these constraints, we shifted to a lightweight orchestration strategy using GitHub Actions for scheduled training (\texttt{train.yml}) and CI/CD operations (\texttt{cicd.yml}), which proved to be a more resource-efficient solution for this specific project scale while maintaining full automation capabilities.
+
+\subsection*{C. Environment Specifications}
 
 \textbf{Python}: 3.10\\
 \textbf{Key dependencies}:
@@ -498,19 +572,16 @@ cd docker && docker compose up -d
     \item prometheus-client==0.19.0
 \end{itemize}
 
-\subsection*{C. Contact Information}
+\subsection*{D. Contact Information}
 
 \textbf{Author}: Ainhoa Pina\\
-\textbf{GitHub}: \url{https://github.com/ainhoupna}\\s
+\textbf{GitHub}: \url{https://github.com/ainhoupna}\\
 \textbf{Hugging Face}: \url{https://huggingface.co/ainhoupna}
 
 \vfill
 \noindent\rule{\textwidth}{0.4pt}\\
-\textit{Report generated: January 3, 2026}\\
+\textit{Report generated: January 2026}\\
 \textit{Project duration: December 2024 - January 2026}\\
 \textit{Course: MLOps - Master in Data Science}
-
-\end{document}
-
 
 \end{document}
