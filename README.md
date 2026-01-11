@@ -1,3 +1,6 @@
+
+[![CICD](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml/badge.svg)](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml)
+
 ---
 title: Credit Fraud Detection
 emoji: 💳
