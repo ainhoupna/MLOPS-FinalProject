@@ -79,6 +79,7 @@ services:
       - monitoring
     depends_on:
       - airflow-db
+    command: webserver
 
   airflow-scheduler:
     image: apache/airflow:2.8.1-python3.10
@@ -97,6 +98,7 @@ services:
       - monitoring
     depends_on:
       - airflow-db
+    command: scheduler
 
   airflow-db:
     image: postgres:13
