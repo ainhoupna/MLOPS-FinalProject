@@ -1,11 +1,21 @@
+---
+title: Credit Fraud Detection
+emoji: 
+colorFrom: red
+colorTo: blue
+sdk: gradio
+sdk_version: "3.50.2"
+app_file: app/app.py
+pinned: false
+---
+
+#  Credit Card Fraud Detection - MLOps Project
 
 [![CICD](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml/badge.svg)](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml)
 
-# 💳 Credit Card Fraud Detection - MLOps Project
-
 A fully automated MLOps pipeline for detecting fraudulent credit card transactions using XGBoost, with comprehensive experiment tracking, monitoring, and deployment.
 
-## 🎯 Project Overview
+##  Project Overview
 
 This project implements an end-to-end machine learning operations pipeline for credit card fraud detection, featuring:
 
@@ -17,7 +27,7 @@ This project implements an end-to-end machine learning operations pipeline for c
 - **CI/CD**: GitHub Actions for testing, training, and deployment
 - **Containerization**: Docker and Docker Compose
 
-## 📊 Dataset
+##  Dataset
 
 [Credit Card Fraud Detection Dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) from Kaggle
 
@@ -25,7 +35,7 @@ This project implements an end-to-end machine learning operations pipeline for c
 - **Highly imbalanced** binary classification problem
 - **30 features**: Time, Amount, and 28 PCA-transformed features (V1-V28)
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -37,23 +47,23 @@ This project implements an end-to-end machine learning operations pipeline for c
 
 1. **Clone the repository**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/ainhoupna/MLOPS-FinalProject.git
 cd MLOPS-FinalProject
 ```
 
-2. **Crear entorno virtual con uv**
+2. **Create virtual environment with uv**
 ```bash
-# Instalar uv si no lo tienes
+# Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Crear entorno e instalar dependencias automáticamente
+# Create environment and install dependencies automatically
 uv sync
 
-# Activar entorno
+# Activate environment
 source .venv/bin/activate
 ```
 
-**Nota**: `uv sync` crea automáticamente el entorno virtual e instala todas las dependencias del `pyproject.toml`. Es mucho más rápido que pip.
+**Note**: `uv sync` automatically creates the virtual environment and installs all dependencies from `pyproject.toml`. It is much faster than pip.
 
 3. **Download dataset**
 ```bash
@@ -66,7 +76,7 @@ chmod 600 ~/.kaggle/kaggle.json
 kaggle datasets download -d mlg-ulb/creditcardfraud -p data/raw --unzip
 ```
 
-## 📚 Usage
+##  Usage
 
 ### 1. Data Preprocessing
 
@@ -160,7 +170,7 @@ pytest tests/ -v --cov=src --cov-report=html
 pytest tests/test_api.py -v
 ```
 
-## 🏗️ Project Structure
+## ️ Project Structure
 
 ```
 .
@@ -199,7 +209,7 @@ pytest tests/test_api.py -v
 └── README.md
 ```
 
-## 🔬 Model Details
+##  Model Details
 
 ### Validation Scheme
 **Stratified K-Fold Cross-Validation** (5 folds)
@@ -231,7 +241,7 @@ pytest tests/test_api.py -v
 - `reg_lambda`: L2 regularization (0-2)
 - `scale_pos_weight`: Automatic class imbalance handling
 
-## 📈 Monitoring Metrics
+##  Monitoring Metrics
 
 ### Counters
 - `fraud_detection_predictions_total{prediction_label}`: Total predictions by label
@@ -245,7 +255,7 @@ pytest tests/test_api.py -v
 ### Histograms
 - `prediction_latency_seconds`: Prediction time distribution
 
-## 🔄 CI/CD Pipeline
+##  CI/CD Pipeline
 
 ### Test Workflow
 - **Trigger**: Push/PR to main/develop
@@ -260,7 +270,7 @@ pytest tests/test_api.py -v
 - **Trigger**: Push to main
 - **Steps**: Build Docker image → Push to Docker Hub
 
-## 🎨 Hugging Face Space
+##  Hugging Face Space
 
 Deploy the Gradio app:
 
@@ -269,46 +279,33 @@ Deploy the Gradio app:
 3. Set `API_URL` environment variable to your deployed API
 4. Space will auto-deploy
 
-## 🧪 Testing Strategy
+## 離 Testing Strategy
 
 - **Unit Tests**: Data preprocessing, inference logic
 - **Integration Tests**: API endpoints, request/response validation
 - **Mocking**: Model dependencies for fast, isolated tests
 - **Coverage**: Aim for >80% code coverage
 
-## 📝 Next Steps
+## 欄 Contributing
 
-- [ ] Download dataset from Kaggle
-- [ ] Train initial model and review MLFlow experiments
-- [ ] Deploy API and verify monitoring
-- [ ] Upload Gradio app to Hugging Face
-- [ ] Set up GitHub repository and configure secrets
-- [ ] Run CI/CD pipeline
-- [ ] Create Grafana dashboards
-- [ ] Write project report
+This is a final project for MLOps course.
 
-## 🤝 Contributing
-
-This is a final project for MLOps course. For group members:
-1. Create feature branches
-2. Write tests for new features
-3. Submit PRs for review
-4. Ensure CI passes before merging
-
-## 📄 License
+##  License
 
 MIT License
 
-## 🔗 Links
+##  Links
 
-- **GitHub Repository**: [Add your repo URL]
-- **Hugging Face Space**: [Add your Space URL]
+- **GitHub Repository**: https://github.com/ainhoupna/MLOPS-FinalProject
+- **Hugging Face Space**: https://huggingface.co/spaces/ainhoupna/Credit_Fraud_Detection
 - **Dataset**: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 
-## 📧 Contact
+##  Contact
 
-[Your Name/Group Members]
-[Your Email]
+**Authors**:
+- Ainhoa Del Rey
+- Iñigo Goikoetxea
+- Karim Abu-Shams
 
 ---
 
