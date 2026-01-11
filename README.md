@@ -11,6 +11,8 @@ pinned: false
 
 # 💳 Credit Card Fraud Detection - MLOps Project
 
+[![CICD](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml/badge.svg)](https://github.com/ainhoupna/MLOPS-FinalProject/actions/workflows/cicd.yml)
+
 A fully automated MLOps pipeline for detecting fraudulent credit card transactions using XGBoost, with comprehensive experiment tracking, monitoring, and deployment.
 
 ## 🎯 Project Overview
@@ -45,23 +47,23 @@ This project implements an end-to-end machine learning operations pipeline for c
 
 1. **Clone the repository**
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/ainhoupna/MLOPS-FinalProject.git
 cd MLOPS-FinalProject
 ```
 
-2. **Crear entorno virtual con uv**
+2. **Create virtual environment with uv**
 ```bash
-# Instalar uv si no lo tienes
+# Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Crear entorno e instalar dependencias automáticamente
+# Create environment and install dependencies automatically
 uv sync
 
-# Activar entorno
+# Activate environment
 source .venv/bin/activate
 ```
 
-**Nota**: `uv sync` crea automáticamente el entorno virtual e instala todas las dependencias del `pyproject.toml`. Es mucho más rápido que pip.
+**Note**: `uv sync` automatically creates the virtual environment and installs all dependencies from `pyproject.toml`. It is much faster than pip.
 
 3. **Download dataset**
 ```bash
@@ -284,24 +286,9 @@ Deploy the Gradio app:
 - **Mocking**: Model dependencies for fast, isolated tests
 - **Coverage**: Aim for >80% code coverage
 
-## 📝 Next Steps
-
-- [ ] Download dataset from Kaggle
-- [ ] Train initial model and review MLFlow experiments
-- [ ] Deploy API and verify monitoring
-- [ ] Upload Gradio app to Hugging Face
-- [ ] Set up GitHub repository and configure secrets
-- [ ] Run CI/CD pipeline
-- [ ] Create Grafana dashboards
-- [ ] Write project report
-
 ## 🤝 Contributing
 
-This is a final project for MLOps course. For group members:
-1. Create feature branches
-2. Write tests for new features
-3. Submit PRs for review
-4. Ensure CI passes before merging
+This is a final project for MLOps course.
 
 ## 📄 License
 
@@ -309,14 +296,16 @@ MIT License
 
 ## 🔗 Links
 
-- **GitHub Repository**: [Add your repo URL]
-- **Hugging Face Space**: [Add your Space URL]
+- **GitHub Repository**: https://github.com/ainhoupna/MLOPS-FinalProject
+- **Hugging Face Space**: https://huggingface.co/spaces/ainhoupna/Credit_Fraud_Detection
 - **Dataset**: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 
 ## 📧 Contact
 
-[Your Name/Group Members]
-[Your Email]
+**Authors**:
+- Ainhoa Del Rey
+- Iñigo Goikoetxea
+- Karim Abu-Shams
 
 ---
 
